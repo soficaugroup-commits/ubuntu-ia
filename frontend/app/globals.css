@@ -1,0 +1,246 @@
+@import "tailwindcss";
+
+:root {
+  --color-navy: #17405b;
+  --color-navy-deep: #0d2a3b;
+  --color-gold: #ad8859;
+  --color-gold-deep: #8a6640;
+  --color-white: #ffffff;
+  --color-canvas: #e8eef2;
+  --color-ink-muted: #4a6a7d;
+  --color-gold-soft: #f4ebe0;
+  --color-navy-soft: #d7e2e9;
+
+  --ds-color-bg-canvas: var(--color-canvas);
+  --ds-color-bg-surface: var(--color-canvas);
+  --ds-color-bg-brand: var(--color-navy);
+  --ds-color-bg-brand-hover: var(--color-navy-deep);
+  --ds-color-bg-brand-subtle: var(--color-navy-soft);
+  --ds-color-bg-accent: var(--color-gold);
+  --ds-color-bg-accent-hover: var(--color-gold-deep);
+  --ds-color-bg-accent-subtle: var(--color-gold-soft);
+  --ds-color-bg-danger: var(--color-gold);
+  --ds-color-bg-danger-hover: var(--color-gold-deep);
+  --ds-color-bg-danger-subtle: var(--color-gold-soft);
+  --ds-color-text-default: var(--color-navy);
+  --ds-color-text-muted: var(--color-ink-muted);
+  --ds-color-text-inverse: var(--color-white);
+  --ds-color-text-accent: var(--color-gold-deep);
+  --ds-color-text-danger: var(--color-gold-deep);
+  --ds-color-border-default: transparent;
+  --ds-color-border-strong: var(--color-navy);
+  --ds-color-border-danger: var(--color-gold-deep);
+  --ds-color-focus: var(--color-gold);
+  --ds-font-sans: var(--font-poppins), Poppins, Helvetica, Arial, sans-serif;
+  --ds-radius-control: 999px;
+  --ds-radius-surface: 24px;
+  --ds-radius-bubble: 22px;
+  --ds-radius-card: 28px;
+  --ds-shadow-raised:
+    8px 8px 16px rgba(23, 64, 91, 0.16),
+    -8px -8px 16px rgba(255, 255, 255, 0.88);
+  --ds-shadow-soft:
+    6px 6px 14px rgba(23, 64, 91, 0.12),
+    -6px -6px 14px rgba(255, 255, 255, 0.8);
+  --ds-shadow-pressed:
+    inset 6px 6px 12px rgba(23, 64, 91, 0.14),
+    inset -6px -6px 12px rgba(255, 255, 255, 0.82);
+  --ds-shadow-bubble:
+    10px 10px 20px rgba(23, 64, 91, 0.18),
+    -4px -4px 12px rgba(255, 255, 255, 0.55);
+  --ds-shadow-gold: 0 10px 20px rgba(173, 136, 89, 0.38);
+}
+
+@theme inline {
+  --color-canvas: var(--ds-color-bg-canvas);
+  --color-surface: var(--ds-color-bg-surface);
+  --color-brand: var(--ds-color-bg-brand);
+  --color-brand-hover: var(--ds-color-bg-brand-hover);
+  --color-brand-subtle: var(--ds-color-bg-brand-subtle);
+  --color-accent: var(--ds-color-bg-accent);
+  --color-accent-hover: var(--ds-color-bg-accent-hover);
+  --color-accent-subtle: var(--ds-color-bg-accent-subtle);
+  --color-danger: var(--ds-color-bg-danger);
+  --color-danger-hover: var(--ds-color-bg-danger-hover);
+  --color-danger-subtle: var(--ds-color-bg-danger-subtle);
+  --color-content: var(--ds-color-text-default);
+  --color-content-muted: var(--ds-color-text-muted);
+  --color-inverse: var(--ds-color-text-inverse);
+  --color-stroke: var(--ds-color-border-default);
+  --color-stroke-strong: var(--ds-color-border-strong);
+  --color-stroke-danger: var(--ds-color-border-danger);
+  --font-sans: var(--ds-font-sans);
+  --radius-control: var(--ds-radius-control);
+  --radius-surface: var(--ds-radius-surface);
+  --radius-bubble: var(--ds-radius-bubble);
+  --radius-card: var(--ds-radius-card);
+  --shadow-raised: var(--ds-shadow-raised);
+  --shadow-pressed: var(--ds-shadow-pressed);
+}
+
+.neo-raised {
+  background: var(--ds-color-bg-canvas);
+  box-shadow: var(--ds-shadow-raised);
+}
+
+.neo-soft {
+  background: var(--ds-color-bg-canvas);
+  box-shadow: var(--ds-shadow-soft);
+}
+
+.neo-pressed {
+  background: var(--ds-color-bg-canvas);
+  box-shadow: var(--ds-shadow-pressed);
+}
+
+.neo-bubble {
+  box-shadow: var(--ds-shadow-bubble);
+}
+
+.neo-gold {
+  box-shadow: var(--ds-shadow-gold);
+}
+
+button.neo-raised:hover:not(:disabled) {
+  box-shadow: var(--ds-shadow-soft);
+}
+
+button.bg-transparent:hover:not(:disabled) {
+  background: var(--ds-color-bg-canvas);
+  box-shadow: var(--ds-shadow-soft);
+}
+
+.neo-card {
+  background: var(--ds-color-bg-canvas);
+  border-radius: var(--radius-card);
+  box-shadow: var(--ds-shadow-raised);
+}
+
+.neo-link {
+  color: var(--ds-color-bg-brand);
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: inset 0 -2px 0 var(--ds-color-bg-accent);
+}
+
+.neo-link:hover {
+  color: var(--ds-color-bg-accent-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .neo-raised,
+  .neo-soft,
+  .neo-pressed,
+  .neo-bubble,
+  .neo-card,
+  .neo-gold {
+    border: 1px solid CanvasText;
+    box-shadow: none;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+html,
+body {
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
+.app-frame {
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+.app-frame-locked {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body {
+  background: var(--ds-color-bg-canvas);
+  color: var(--ds-color-text-default);
+  font-family: var(--ds-font-sans);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ds-color-focus);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--color-gold-soft);
+  color: var(--color-navy);
+}
+
+a {
+  color: inherit;
+}
+
+hr {
+  border: 0;
+  height: 8px;
+  margin: 1rem 0;
+  border-radius: 999px;
+  box-shadow: var(--ds-shadow-pressed);
+}
+
+select,
+input,
+textarea,
+button {
+  font-family: inherit;
+}
+
+select {
+  display: none;
+}
+
+input:-webkit-autofill,
+textarea:-webkit-autofill {
+  -webkit-text-fill-color: var(--color-navy);
+  box-shadow: var(--ds-shadow-pressed), 0 0 0 1000px var(--color-canvas) inset;
+  caret-color: var(--color-navy);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-navy-soft);
+  border-radius: 999px;
+  box-shadow: inset 2px 2px 4px rgba(23, 64, 91, 0.16),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.7);
+}

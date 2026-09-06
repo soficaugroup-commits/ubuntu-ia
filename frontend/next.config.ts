@@ -1,0 +1,15 @@
+import { loadEnvConfig } from "@next/env";
+import path from "path";
+import type { NextConfig } from "next";
+
+loadEnvConfig(path.resolve(process.cwd(), ".."));
+
+const nextConfig: NextConfig = {
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "21mb",
+    },
+  },
+};
+
+export default nextConfig;

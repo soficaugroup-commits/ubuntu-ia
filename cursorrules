@@ -1,0 +1,92 @@
+# Contexte du projet — Ubuntu IA
+
+## Description
+Ubuntu IA est un agent IA d'entreprise développé par NEXUS TECH AFRICA dans le cadre d'un marché
+pour le client SOFICAU UBUNTU GROUP. Phase actuelle : MVP (RAG + chat web).
+
+Objectif du MVP : permettre à un collaborateur de SOFICAU UBUNTU GROUP de poser une question
+en langage naturel et d'obtenir une réponse fiable, sourcée à partir des documents internes de
+l'entreprise (pas d'hallucination, pas de réponse sans source identifiée).
+
+## Stack technique
+- Base de données + vecteurs : Supabase (PostgreSQL + extension pgvector)
+- Backend : Python (FastAPI) — préférer des fonctions courtes et testables
+- Extraction web (indexation par URL) : `trafilatura` (ou `BeautifulSoup` + `requests` en repli)
+- Frontend : React/Next.js pour le chat web ET l'interface d'administration
+- LLM et embeddings : via OpenRouter (API compatible OpenAI, `base_url` = `https://openrouter.ai/api/v1`) —
+  clé dans `.env` sous `OPENROUTER_API_KEY`, ne jamais la commiter. OpenRouter permet de changer de
+  modèle de génération (Claude, GPT, Gemini...) sans changer le code d'appel, mais le modèle
+  d'embedding doit rester fixe une fois choisi (voir jalon-1-taches-detaillees.md, Tâche 1.4)
+- Hébergement cible : Hostinger ou Vercel/Railway (à confirmer selon l'environnement)
+
+## Identité visuelle
+- Couleur principale (bleu marine) : `#17405B`
+- Couleur d'accent (or) : `#AD8859` — accents, badges, focus, actions destructives
+- Neutres structurels uniquement : canvas `#E8EEF2`, ombres issues du marine, texte atténué dérivé du marine
+- Police : Poppins (400/500/600/700) ; repli Helvetica, Arial
+- Style : neumorphisme (surfaces extrudées, coins très arrondis, pas de bordures dures)
+- Logo : "S" circulaire SOFICAU Group, marine + or
+- Consommation UI : `frontend/components/ui` (`Surface`, `Button`, `TextField`, `SelectField`, `Alert`, `Dialog`, `EmptyState`, `StatusBadge`)
+- Jamais de `<select>` natif : le menu OS n'obéit pas au neumorphisme (coins droits, bleu système)
+- Règle agent persistante : `.cursor/rules/ubuntu-ia-design-system.mdc`
+- Ne pas réintroduire `#140A5F` ni `#B70003` sans validation explicite
+
+## Conventions de code
+- Python : type hints obligatoires sur les fonctions publiques, docstrings courtes
+- Pas de secrets en dur dans le code — tout passe par variables d'environnement (`.env`, jamais commité)
+- Nommage des tables et colonnes en français (cohérent avec le schéma du cahier des charges) :
+  `documents` (avec `type_source`: fichier | url), `document_chunks`, `users`, `conversations`
+- Chaque fonction d'ingestion ou de recherche doit gérer explicitement les cas d'erreur
+  (fichier corrompu, URL inaccessible, embedding manquant, absence de résultat pertinent) plutôt
+  que de laisser planter silencieusement
+- Toute fonction de suppression de document doit aussi supprimer ses segments associés
+  (`document_chunks`) — jamais de suppression partielle laissant des données orphelines
+
+## Sécurité (voir cahier des charges, Section 7, pour le détail complet)
+- Row Level Security (RLS) activé sur toutes les tables Supabase dès leur création — jamais de table sans RLS, même temporairement
+- Toute route backend qui modifie des données (upload, suppression, ajout de lien) doit vérifier le rôle de l'utilisateur côté serveur — ne jamais faire confiance à un contrôle uniquement côté frontend
+- Valider et limiter la taille/le type de tout fichier uploadé avant traitement (whitelist d'extensions : PDF, DOCX, TXT)
+- Sanitiser les entrées utilisateur avant de les inclure dans un prompt envoyé au LLM, pour limiter les risques d'injection de prompt
+- Rate limiting sur les endpoints publics (chat, authentification) dès le Jalon 2 — ne pas le repousser à la fin du projet
+- Toute clé API (OpenRouter, Supabase service role) reste strictement côté serveur, jamais dans le code frontend ni dans un commit
+- Journaliser les actions d'administration (upload, suppression) avec l'identité de l'utilisateur et l'horodatage
+
+## Structure de dossiers attendue
+```
+/backend
+  /ingestion      -> extraction fichier + URL, chunking, embeddings, suppression (Jalon 1)
+  /api            -> endpoints FastAPI (recherche, chat, upload, ajout URL, suppression)
+  /db             -> schéma SQL, migrations Supabase
+/frontend
+  /app            -> interface chat Next.js
+  /admin          -> interface d'administration (upload, liens, suppression, statuts)
+.env.example
+```
+
+## Priorités de développement (dans l'ordre)
+1. Jalon 1 — pipeline d'ingestion Supabase, fichiers ET URL, + suppression, RLS activé dès le départ (voir jalon-1-taches-detaillees.md)
+2. Jalon 2 — backend de recherche sémantique + appel au LLM + endpoints admin + authentification + rate limiting + validation des entrées
+3. Jalon 3 — frontend chat + interface d'administration + charte graphique SOFICAU
+4. Jalon 4 — déploiement sur nom de domaine dédié (HTTPS obligatoire)
+5. Jalon 5 — ajustements qualité, tests de sécurité, journalisation, sauvegardes
+
+Ne pas commencer les jalons 4-6 de la feuille de route globale (email, rapports/PPT, Teams) —
+hors périmètre de ce MVP. L'indexation par URL se limite à une page unique pour le MVP — ne pas
+développer de crawler multi-pages sans validation explicite du client.
+
+## Points encore ouverts (demander confirmation avant de coder en dur un choix)
+- Modèle de génération précis via OpenRouter (Claude, GPT, autre)
+- Modèle d'embedding précis via OpenRouter — à fixer définitivement avant la Tâche 1.4, ne pas en changer ensuite sans réindexer tous les documents
+- Région d'hébergement Supabase selon la sensibilité des données du client
+- Nom de domaine final pour le déploiement
+- Fichier de charte graphique officiel du client, si disponible, pour valider les couleurs/police ci-dessus
+
+## Ce qu'il ne faut jamais faire
+- Ne jamais renvoyer une réponse générée sans indiquer les sources documentaires utilisées
+- Ne jamais indexer un document sans mettre à jour son `statut_indexation`
+- Ne jamais exposer une clé API (OpenRouter, Supabase) côté frontend
+- Ne jamais supprimer un document sans supprimer ses segments associés (`document_chunks`)
+- Ne jamais changer de modèle d'embedding en cours de projet sans réindexer l'intégralité des documents existants (les vecteurs de deux modèles différents ne sont pas comparables entre eux)
+- Ne jamais créer ou modifier une table Supabase sans activer RLS dans la même opération
+- Ne jamais faire reposer un contrôle d'accès uniquement côté frontend
+- Ne jamais introduire une couleur ou une police hors de la charte SOFICAU Group sans validation explicite

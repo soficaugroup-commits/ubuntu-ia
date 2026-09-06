@@ -1,0 +1,14 @@
+# Ubuntu IA — le frontend Next.js vit dans frontend/.
+# Sans ce fichier, Netlify construit la racine et sert une 404.
+
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_PUBLIC_APP_URL = "https://ubuntu-ia.com"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

@@ -9,6 +9,10 @@
 [build.environment]
   NODE_VERSION = "20"
   NEXT_PUBLIC_APP_URL = "https://ubuntu-ia.com"
+  # Next.js recopie les secrets serveur dans .next/ — le scanner Netlify
+  # les prend pour une fuite. Ce sont des variables d'environnement, pas du code.
+  SECRETS_SCAN_OMIT_KEYS = "OPENROUTER_API_KEY,UBUNTU_OPENROUTER_API_KEY,SUPABASE_SERVICE_ROLE_KEY,RESEND_API_KEY,NETLIFY_AI_GATEWAY_KEY,OPENAI_API_KEY"
+  SECRETS_SCAN_OMIT_PATHS = ".next,frontend/.next"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

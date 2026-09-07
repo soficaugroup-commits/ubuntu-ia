@@ -1,21 +1,23 @@
+import "server-only";
+
+function readEnv(name: string): string {
+  return process.env[name]?.trim() || "";
+}
+
 export function supabaseUrl(): string {
-  return (
-    process.env.SUPABASE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
-    ""
-  );
+  return readEnv("SUPABASE_URL") || readEnv("NEXT_PUBLIC_SUPABASE_URL");
 }
 
 export function supabaseServiceKey(): string {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || "";
+  return readEnv("SUPABASE_SERVICE_ROLE_KEY");
 }
 
 export function resendApiKey(): string {
-  return process.env.RESEND_API_KEY?.trim() || "";
+  return readEnv("RESEND_API_KEY");
 }
 
 export function resendFromEmail(): string {
-  return process.env.RESEND_FROM_EMAIL?.trim() || "";
+  return readEnv("RESEND_FROM_EMAIL");
 }
 
 export const OPENROUTER_OFFICIAL_BASE = "https://openrouter.ai/api/v1";
@@ -38,29 +40,25 @@ function isOfficialOpenRouterBase(url: string): boolean {
 }
 
 export function resolveLlmEndpoint(): LlmEndpoint {
-  const personal =
-    process.env.UBUNTU_OPENROUTER_API_KEY?.trim() ||
-    (isPersonalOpenRouterKey(process.env.OPENROUTER_API_KEY?.trim() || "")
-      ? process.env.OPENROUTER_API_KEY!.trim()
-      : "");
-  if (personal) {
-    return { key: personal, baseUrl: OPENROUTER_OFFICIAL_BASE };
+  const personalKey = readEnv("UBUNTU_OPENROUTER_API_KEY") || readEnv("OPENROUTER_API_KEY");
+  if (isPersonalOpenRouterKey(personalKey)) {
+    return { key: personalKey, baseUrl: OPENROUTER_OFFICIAL_BASE };
   }
 
-  const openRouterKey = process.env.OPENROUTER_API_KEY?.trim() || "";
-  const openRouterBase = trimSlash(process.env.OPENROUTER_BASE_URL?.trim() || "");
+  const openRouterKey = readEnv("OPENROUTER_API_KEY");
+  const openRouterBase = trimSlash(readEnv("OPENROUTER_BASE_URL"));
   if (openRouterKey && openRouterBase && !isOfficialOpenRouterBase(openRouterBase)) {
     return { key: openRouterKey, baseUrl: openRouterBase };
   }
 
-  const gatewayKey = process.env.NETLIFY_AI_GATEWAY_KEY?.trim() || "";
-  const gatewayBase = trimSlash(process.env.NETLIFY_AI_GATEWAY_BASE_URL?.trim() || "");
+  const gatewayKey = readEnv("NETLIFY_AI_GATEWAY_KEY");
+  const gatewayBase = trimSlash(readEnv("NETLIFY_AI_GATEWAY_BASE_URL"));
   if (gatewayKey && gatewayBase) {
     return { key: gatewayKey, baseUrl: gatewayBase };
   }
 
-  const openaiKey = process.env.OPENAI_API_KEY?.trim() || "";
-  const openaiBase = trimSlash(process.env.OPENAI_BASE_URL?.trim() || "");
+  const openaiKey = readEnv("OPENAI_API_KEY");
+  const openaiBase = trimSlash(readEnv("OPENAI_BASE_URL"));
   if (openaiKey && openaiBase) {
     return { key: openaiKey, baseUrl: openaiBase };
   }
@@ -103,24 +101,23 @@ export function openRouterHeaders(key: string): HeadersInit {
     Authorization: `Bearer ${key}`,
     "Content-Type": "application/json",
     "HTTP-Referer":
-      process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://ubuntu-ia.com",
+      readEnv("NEXT_PUBLIC_APP_URL") || "https://ubuntu-ia.com",
     "X-Title": "Ubuntu IA",
   };
 }
 
 export function visionModel(): string {
-  return process.env.VISION_MODEL?.trim() || "openai/gpt-4o-mini";
+  return readEnv("VISION_MODEL") || "openai/gpt-4o-mini";
 }
 
 export function appUrl(request: Request): string {
-  const configured =
-    process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim();
+  const configured = readEnv("NEXT_PUBLIC_APP_URL") || readEnv("APP_URL");
   if (configured) return configured.replace(/\/$/, "");
   return new URL(request.url).origin;
 }
 
 export function assertDocumentSecrets(): string | null {
-  if (!supabaseUrl() && !process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()) {
+  if (!supabaseUrl()) {
     return "Le service documentaire n'est pas configuré (Supabase).";
   }
   return null;

@@ -387,38 +387,39 @@ export function AdminWorkspace() {
       ) : null}
 
       {loadState === "ready" && view === "ready" ? (
-        <>
-          <ul className="flex flex-col gap-3 lg:hidden" aria-label={copy.admin.tableLabel}>
+        <ul className="flex flex-col gap-3" aria-label={copy.admin.tableLabel}>
             {visibleDocuments.map((document) => (
               <li key={document.id}>
-                <Surface elevation="raised" radius="card" className="flex flex-col gap-3 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="font-semibold">{document.titre}</p>
-                    <StatusBadge status={document.statut_indexation} />
+                <Surface elevation="raised" radius="card" className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="font-semibold">{document.titre}</p>
+                      <StatusBadge status={document.statut_indexation} />
+                    </div>
+                    {document.statut_indexation === "erreur" && document.message_erreur ? (
+                      <p className="text-sm text-content-muted">{document.message_erreur}</p>
+                    ) : null}
+                    <p className="text-sm text-content-muted">
+                      {labelOf(document.categorie)} ·{" "}
+                      {document.type_source === "url"
+                        ? copy.admin.sourceUrl
+                        : copy.admin.sourceFile}
+                    </p>
+                    {document.url_source ? (
+                      <a
+                        href={document.url_source}
+                        className="neo-link break-all text-sm"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {document.url_source}
+                      </a>
+                    ) : null}
+                    <p className="text-sm text-content-muted">
+                      {formatDateTime(document.date_ajout)}
+                    </p>
                   </div>
-                  {document.statut_indexation === "erreur" && document.message_erreur ? (
-                    <p className="text-sm text-content-muted">{document.message_erreur}</p>
-                  ) : null}
-                  <p className="text-sm text-content-muted">
-                    {labelOf(document.categorie)} ·{" "}
-                    {document.type_source === "url"
-                      ? copy.admin.sourceUrl
-                      : copy.admin.sourceFile}
-                  </p>
-                  {document.url_source ? (
-                    <a
-                      href={document.url_source}
-                      className="neo-link break-all text-sm"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {document.url_source}
-                    </a>
-                  ) : null}
-                  <p className="text-sm text-content-muted">
-                    {formatDateTime(document.date_ajout)}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 sm:shrink-0 sm:flex-col sm:items-stretch">
                     {document.statut_indexation === "erreur" ? (
                       <Button
                         variant="secondary"
@@ -438,77 +439,6 @@ export function AdminWorkspace() {
               </li>
             ))}
           </ul>
-          <Surface elevation="raised" radius="card" className="hidden overflow-x-auto lg:block">
-            <table className="w-full min-w-[44rem] text-left text-sm">
-              <caption className="sr-only">{copy.admin.tableLabel}</caption>
-              <thead>
-                <tr className="neo-pressed text-content-muted">
-                  <th className="px-4 py-4 font-semibold">{copy.admin.columns.title}</th>
-                  <th className="px-4 py-4 font-semibold">{copy.admin.columns.category}</th>
-                  <th className="px-4 py-4 font-semibold">{copy.admin.columns.source}</th>
-                  <th className="px-4 py-4 font-semibold">{copy.admin.columns.status}</th>
-                  <th className="px-4 py-4 font-semibold">{copy.admin.columns.date}</th>
-                  <th className="px-4 py-4 font-semibold">{copy.admin.columns.actions}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleDocuments.map((document) => (
-                  <tr key={document.id} className="align-top">
-                    <td className="px-4 py-4 font-semibold">{document.titre}</td>
-                    <td className="px-4 py-4">{labelOf(document.categorie)}</td>
-                    <td className="px-4 py-4">
-                      {document.type_source === "url" ? (
-                        <span>
-                          {copy.admin.sourceUrl}
-                          {document.url_source ? (
-                            <>
-                              <br />
-                              <a
-                                href={document.url_source}
-                                className="neo-link break-all"
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {document.url_source}
-                              </a>
-                            </>
-                          ) : null}
-                        </span>
-                      ) : (
-                        copy.admin.sourceFile
-                      )}
-                    </td>
-                    <td className="px-4 py-4">
-                      <StatusBadge status={document.statut_indexation} />
-                      {document.statut_indexation === "erreur" && document.message_erreur ? (
-                        <p className="mt-2 max-w-xs text-content-muted">{document.message_erreur}</p>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-4">{formatDateTime(document.date_ajout)}</td>
-                    <td className="px-4 py-4">
-                      <div className="flex flex-col items-start gap-2">
-                        {document.statut_indexation === "erreur" ? (
-                          <Button
-                            variant="secondary"
-                            onClick={() => setPendingAction({ kind: "retry", document })}
-                          >
-                            {copy.admin.retryIndex}
-                          </Button>
-                        ) : null}
-                        <Button
-                          variant="danger"
-                          onClick={() => setPendingAction({ kind: "delete", document })}
-                        >
-                          {copy.admin.delete}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Surface>
-        </>
       ) : null}
 
       <Surface as="section" elevation="raised" radius="card" className="flex flex-col gap-5 p-5">

@@ -1,7 +1,7 @@
 import {
-  OPENROUTER_BASE_URL,
+  chatCompletionsUrl,
   openRouterHeaders,
-  requireOpenRouterKey,
+  resolveLlmEndpoint,
   visionModel,
 } from "@/lib/server/env";
 
@@ -169,11 +169,11 @@ async function extractPdf(buffer: Buffer): Promise<string> {
 }
 
 async function describeImage(buffer: Buffer, mime: string): Promise<string> {
-  const key = requireOpenRouterKey();
+  const endpoint = resolveLlmEndpoint();
   const encoded = buffer.toString("base64");
-  const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+  const response = await fetch(chatCompletionsUrl(endpoint), {
     method: "POST",
-    headers: openRouterHeaders(key),
+    headers: openRouterHeaders(endpoint.key),
     body: JSON.stringify({
       model: visionModel(),
       messages: [

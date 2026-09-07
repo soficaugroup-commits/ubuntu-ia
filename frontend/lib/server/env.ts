@@ -18,25 +18,84 @@ export function resendFromEmail(): string {
   return process.env.RESEND_FROM_EMAIL?.trim() || "";
 }
 
-export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+export const OPENROUTER_OFFICIAL_BASE = "https://openrouter.ai/api/v1";
+
+export type LlmEndpoint = {
+  key: string;
+  baseUrl: string;
+};
+
+function trimSlash(value: string): string {
+  return value.replace(/\/$/, "");
+}
+
+function isPersonalOpenRouterKey(key: string): boolean {
+  return key.startsWith("sk-or-v1-");
+}
+
+function isOfficialOpenRouterBase(url: string): boolean {
+  return /openrouter\.ai/i.test(url);
+}
+
+export function resolveLlmEndpoint(): LlmEndpoint {
+  const personal =
+    process.env.UBUNTU_OPENROUTER_API_KEY?.trim() ||
+    (isPersonalOpenRouterKey(process.env.OPENROUTER_API_KEY?.trim() || "")
+      ? process.env.OPENROUTER_API_KEY!.trim()
+      : "");
+  if (personal) {
+    return { key: personal, baseUrl: OPENROUTER_OFFICIAL_BASE };
+  }
+
+  const openRouterKey = process.env.OPENROUTER_API_KEY?.trim() || "";
+  const openRouterBase = trimSlash(process.env.OPENROUTER_BASE_URL?.trim() || "");
+  if (openRouterKey && openRouterBase && !isOfficialOpenRouterBase(openRouterBase)) {
+    return { key: openRouterKey, baseUrl: openRouterBase };
+  }
+
+  const gatewayKey = process.env.NETLIFY_AI_GATEWAY_KEY?.trim() || "";
+  const gatewayBase = trimSlash(process.env.NETLIFY_AI_GATEWAY_BASE_URL?.trim() || "");
+  if (gatewayKey && gatewayBase) {
+    return { key: gatewayKey, baseUrl: gatewayBase };
+  }
+
+  const openaiKey = process.env.OPENAI_API_KEY?.trim() || "";
+  const openaiBase = trimSlash(process.env.OPENAI_BASE_URL?.trim() || "");
+  if (openaiKey && openaiBase) {
+    return { key: openaiKey, baseUrl: openaiBase };
+  }
+
+  throw new Error(
+    "Aucun fournisseur d'embeddings n'est disponible sur le serveur.",
+  );
+}
+
+export function embeddingRequest(endpoint: LlmEndpoint): {
+  url: string;
+  model: string;
+} {
+  const official = isOfficialOpenRouterBase(endpoint.baseUrl);
+  const model = official
+    ? "openai/text-embedding-3-small"
+    : endpoint.baseUrl.includes("openrouter")
+      ? "openai/text-embedding-3-small"
+      : "text-embedding-3-small";
+  return {
+    url: `${endpoint.baseUrl}/embeddings`,
+    model,
+  };
+}
+
+export function chatCompletionsUrl(endpoint: LlmEndpoint): string {
+  return `${endpoint.baseUrl}/chat/completions`;
+}
 
 export function openrouterApiKey(): string {
-  return process.env.OPENROUTER_API_KEY?.trim() || "";
+  return resolveLlmEndpoint().key;
 }
 
 export function requireOpenRouterKey(): string {
-  const key = openrouterApiKey();
-  if (!key) {
-    throw new Error(
-      "OPENROUTER_API_KEY n'est pas configurée. Dans Netlify, ajoutez votre clé OpenRouter personnelle (sk-or-v1-…).",
-    );
-  }
-  if (!key.startsWith("sk-or-v1-")) {
-    throw new Error(
-      "Netlify a injecté la clé de sa passerelle IA, inutilisable pour l'indexation. Dans Netlify → Environment variables, définissez OPENROUTER_API_KEY avec votre clé OpenRouter (sk-or-v1-…), puis redéployez.",
-    );
-  }
-  return key;
+  return resolveLlmEndpoint().key;
 }
 
 export function openRouterHeaders(key: string): HeadersInit {

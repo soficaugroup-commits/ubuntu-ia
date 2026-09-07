@@ -317,130 +317,6 @@ export function AdminWorkspace() {
         ) : null}
       </header>
 
-      <Surface as="section" elevation="raised" radius="card" className="flex flex-col gap-5 p-5">
-        <header className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold">{copy.admin.categoriesTitle}</h2>
-        </header>
-        <div className="grid gap-4 md:grid-cols-2">
-          <SelectField
-            id="categorie"
-            className="w-full max-w-sm"
-            label={copy.admin.categoryIndexLabel}
-            hint={copy.admin.categoryIndexHint}
-            value={category}
-            onChange={(next) => setCategory(next)}
-          >
-            {categories.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </SelectField>
-          <SelectField
-            id="filtre-categorie"
-            className="w-full max-w-sm"
-            label={copy.admin.categoryFilterLabel}
-            hint={copy.admin.categoryFilterHint}
-            value={filter}
-            onChange={setFilter}
-          >
-            <option value={ALL_CATEGORIES}>{copy.admin.categoryFilterAll}</option>
-            {categories.map((item) => {
-              const count = documents.filter((doc) => doc.categorie === item.id).length;
-              return (
-                <option key={item.id} value={item.id}>
-                  {count ? `${item.label} (${count})` : item.label}
-                </option>
-              );
-            })}
-          </SelectField>
-        </div>
-        <form className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end" onSubmit={onAddCategory}>
-          <TextField
-            id="nouvelle-categorie"
-            label={copy.admin.categoryAddLabel}
-            hint={copy.admin.categoryAddHint}
-            placeholder={copy.admin.categoryAddPlaceholder}
-            value={newCategory}
-            error={categoryError}
-            onChange={(event) => {
-              setNewCategory(event.target.value);
-              if (categoryError) setCategoryError(undefined);
-            }}
-          />
-          <Button type="submit">{copy.admin.categoryAdd}</Button>
-        </form>
-      </Surface>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Surface as="section" elevation="raised" radius="card" className="p-5">
-          <h2 className="text-lg font-semibold">{copy.admin.uploadTitle}</h2>
-          <p className="mt-1 text-sm text-content-muted">{copy.admin.uploadLead}</p>
-          <div
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragging(false);
-              const file = event.dataTransfer.files[0];
-              if (file) requestFile(file);
-            }}
-            className={`mt-4 rounded-surface px-4 py-8 text-center ${
-              dragging ? "neo-pressed" : "neo-soft"
-            }`}
-          >
-            <p>
-              {copy.admin.uploadDrop}{" "}
-              <button
-                type="button"
-                className="neo-link"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {copy.admin.uploadBrowse}
-              </button>
-            </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={INDEXABLE_ACCEPT}
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) requestFile(file);
-                event.target.value = "";
-              }}
-            />
-          </div>
-          {fileError ? (
-            <p className="mt-2 text-sm font-medium text-accent-hover" role="alert">
-              {fileError}
-            </p>
-          ) : null}
-        </Surface>
-
-        <Surface as="section" elevation="raised" radius="card" className="p-5">
-          <h2 className="text-lg font-semibold">{copy.admin.urlTitle}</h2>
-          <form className="mt-4 flex flex-col gap-4" onSubmit={onUrlSubmit}>
-            <TextField
-              id="url"
-              type="url"
-              label={copy.admin.urlLabel}
-              hint={copy.admin.urlHint}
-              placeholder={copy.admin.urlPlaceholder}
-              value={url}
-              error={urlError}
-              onChange={(event) => setUrl(event.target.value)}
-            />
-            <Button type="submit" pending={urlPending}>
-              {urlPending ? copy.admin.urlSubmitting : copy.admin.urlSubmit}
-            </Button>
-          </form>
-        </Surface>
-      </div>
-
       {toast ? (
         <Surface
           elevation={toast.tone === "danger" ? "gold" : "soft"}
@@ -634,6 +510,130 @@ export function AdminWorkspace() {
           </Surface>
         </>
       ) : null}
+
+      <Surface as="section" elevation="raised" radius="card" className="flex flex-col gap-5 p-5">
+        <header className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold">{copy.admin.categoriesTitle}</h2>
+        </header>
+        <div className="grid gap-4 md:grid-cols-2">
+          <SelectField
+            id="categorie"
+            className="w-full max-w-sm"
+            label={copy.admin.categoryIndexLabel}
+            hint={copy.admin.categoryIndexHint}
+            value={category}
+            onChange={(next) => setCategory(next)}
+          >
+            {categories.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            id="filtre-categorie"
+            className="w-full max-w-sm"
+            label={copy.admin.categoryFilterLabel}
+            hint={copy.admin.categoryFilterHint}
+            value={filter}
+            onChange={setFilter}
+          >
+            <option value={ALL_CATEGORIES}>{copy.admin.categoryFilterAll}</option>
+            {categories.map((item) => {
+              const count = documents.filter((doc) => doc.categorie === item.id).length;
+              return (
+                <option key={item.id} value={item.id}>
+                  {count ? `${item.label} (${count})` : item.label}
+                </option>
+              );
+            })}
+          </SelectField>
+        </div>
+        <form className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end" onSubmit={onAddCategory}>
+          <TextField
+            id="nouvelle-categorie"
+            label={copy.admin.categoryAddLabel}
+            hint={copy.admin.categoryAddHint}
+            placeholder={copy.admin.categoryAddPlaceholder}
+            value={newCategory}
+            error={categoryError}
+            onChange={(event) => {
+              setNewCategory(event.target.value);
+              if (categoryError) setCategoryError(undefined);
+            }}
+          />
+          <Button type="submit">{copy.admin.categoryAdd}</Button>
+        </form>
+      </Surface>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Surface as="section" elevation="raised" radius="card" className="p-5">
+          <h2 className="text-lg font-semibold">{copy.admin.uploadTitle}</h2>
+          <p className="mt-1 text-sm text-content-muted">{copy.admin.uploadLead}</p>
+          <div
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragging(false);
+              const file = event.dataTransfer.files[0];
+              if (file) requestFile(file);
+            }}
+            className={`mt-4 rounded-surface px-4 py-8 text-center ${
+              dragging ? "neo-pressed" : "neo-soft"
+            }`}
+          >
+            <p>
+              {copy.admin.uploadDrop}{" "}
+              <button
+                type="button"
+                className="neo-link"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {copy.admin.uploadBrowse}
+              </button>
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={INDEXABLE_ACCEPT}
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) requestFile(file);
+                event.target.value = "";
+              }}
+            />
+          </div>
+          {fileError ? (
+            <p className="mt-2 text-sm font-medium text-accent-hover" role="alert">
+              {fileError}
+            </p>
+          ) : null}
+        </Surface>
+
+        <Surface as="section" elevation="raised" radius="card" className="p-5">
+          <h2 className="text-lg font-semibold">{copy.admin.urlTitle}</h2>
+          <form className="mt-4 flex flex-col gap-4" onSubmit={onUrlSubmit}>
+            <TextField
+              id="url"
+              type="url"
+              label={copy.admin.urlLabel}
+              hint={copy.admin.urlHint}
+              placeholder={copy.admin.urlPlaceholder}
+              value={url}
+              error={urlError}
+              onChange={(event) => setUrl(event.target.value)}
+            />
+            <Button type="submit" pending={urlPending}>
+              {urlPending ? copy.admin.urlSubmitting : copy.admin.urlSubmit}
+            </Button>
+          </form>
+        </Surface>
+      </div>
 
       <ConfirmDialog
         open={Boolean(pendingAction && confirmCopy)}

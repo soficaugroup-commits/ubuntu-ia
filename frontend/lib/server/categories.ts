@@ -1,26 +1,13 @@
-import { validateNewCategory } from "@/lib/categories";
+import { mergeDocumentCategories, validateNewCategory } from "@/lib/categories";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
-import type { KnowledgeCategory, KnowledgeDocument } from "@/lib/types";
+import type { KnowledgeCategory } from "@/lib/types";
+
+export { mergeDocumentCategories };
 
 type CategoryRow = {
   id: string;
   label: string;
 };
-
-export function mergeDocumentCategories(
-  categories: KnowledgeCategory[],
-  documents: KnowledgeDocument[],
-): KnowledgeCategory[] {
-  const known = new Set(categories.map((item) => item.id));
-  const extra = documents
-    .map((document) => document.categorie)
-    .filter((id): id is string => Boolean(id) && !known.has(id))
-    .filter((id, index, list) => list.indexOf(id) === index)
-    .map((id) => ({ id, label: id }));
-  return [...categories, ...extra].sort((a, b) =>
-    a.label.localeCompare(b.label, "fr"),
-  );
-}
 
 export async function listCategories(): Promise<KnowledgeCategory[]> {
   const { data, error } = await supabaseAdmin()

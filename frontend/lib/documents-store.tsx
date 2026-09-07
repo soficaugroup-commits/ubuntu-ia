@@ -9,8 +9,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { adminDelete, adminGet, adminPost, adminPostForm } from "@/lib/admin-api";
+import { adminDelete, adminPost, adminPostForm } from "@/lib/admin-api";
 import { defaultCategories, validateNewCategory } from "@/lib/categories";
+import { listKnowledgeFromSession } from "@/lib/knowledge-list";
+import { useSession } from "@/lib/session";
 import {
   INDEXABLE_EXTENSIONS,
   INDEXABLE_MIME_TYPES,
@@ -103,34 +105,36 @@ function upsertDocument(
 }
 
 export function DocumentsProvider({ children }: { children: ReactNode }) {
+  const { user, hydrated } = useSession();
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [categories, setCategories] = useState<KnowledgeCategory[]>(defaultCategories);
   const [hasEverHadDocuments, setHasEverHadDocuments] = useState(false);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
 
   const refresh = useCallback(async (reportError = true) => {
-    const result = await adminGet<{
-      documents: KnowledgeDocument[];
-      categories: KnowledgeCategory[];
-    }>("/api/documents");
+    const result = await listKnowledgeFromSession();
     if (!result.ok) {
       if (reportError) setLoadState("error");
       return;
     }
-    setDocuments(result.data.documents);
-    if (Array.isArray(result.data.categories)) {
-      setCategories(result.data.categories);
-    }
-    if (result.data.documents.length > 0) setHasEverHadDocuments(true);
+    setDocuments(result.documents);
+    setCategories(result.categories);
+    if (result.documents.length > 0) setHasEverHadDocuments(true);
     setLoadState("ready");
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
     const timer = window.setTimeout(() => {
+      if (!user || user.role !== "administrateur") {
+        setDocuments([]);
+        setLoadState("ready");
+        return;
+      }
       void refresh();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [refresh]);
+  }, [hydrated, refresh, user]);
 
   const reload = useCallback(async () => {
     setLoadState("loading");

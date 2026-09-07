@@ -11,7 +11,10 @@ async function authHeaders(): Promise<HeadersInit> {
 export async function adminGet<T>(path: string): Promise<
   { ok: true; data: T } | { ok: false; error: string }
 > {
-  const response = await fetch(path, { headers: await authHeaders() });
+  const response = await fetch(path, {
+    cache: "no-store",
+    headers: await authHeaders(),
+  });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     return { ok: false, error: body.error || "La requête n'a pas abouti." };

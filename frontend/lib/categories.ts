@@ -28,6 +28,21 @@ export function parseCategoryLabel(raw: string): string {
   return raw.replace(/\s+/g, " ").trim();
 }
 
+export function mergeDocumentCategories(
+  categories: KnowledgeCategory[],
+  documents: { categorie: string }[],
+): KnowledgeCategory[] {
+  const known = new Set(categories.map((item) => item.id));
+  const extra = documents
+    .map((document) => document.categorie)
+    .filter((id): id is string => Boolean(id) && !known.has(id))
+    .filter((id, index, list) => list.indexOf(id) === index)
+    .map((id) => ({ id, label: id }));
+  return [...categories, ...extra].sort((a, b) =>
+    a.label.localeCompare(b.label, "fr"),
+  );
+}
+
 export function validateNewCategory(
   raw: string,
   categories: KnowledgeCategory[],

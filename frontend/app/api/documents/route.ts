@@ -10,6 +10,8 @@ import { assertSupabaseSecrets } from "@/lib/server/env";
 import { isAdminActor, requireAdmin } from "@/lib/server/require-admin";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
@@ -28,10 +30,13 @@ export async function GET(request: Request) {
       listDocuments(),
       listCategories(),
     ]);
-    return NextResponse.json({
-      documents,
-      categories: mergeDocumentCategories(categories, documents),
-    });
+    return NextResponse.json(
+      {
+        documents,
+        categories: mergeDocumentCategories(categories, documents),
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch {
     return NextResponse.json(
       { error: "La liste des documents n'a pas pu être chargée." },

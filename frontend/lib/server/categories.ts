@@ -1,4 +1,8 @@
-import { mergeDocumentCategories, validateNewCategory } from "@/lib/categories";
+import {
+  defaultCategories,
+  mergeDocumentCategories,
+  validateNewCategory,
+} from "@/lib/categories";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
 import type { KnowledgeCategory } from "@/lib/types";
 
@@ -15,9 +19,13 @@ export async function listCategories(): Promise<KnowledgeCategory[]> {
     .select("id, label")
     .order("label");
   if (error) {
-    throw new Error("Les catégories n'ont pas pu être chargées.");
+    return defaultCategories;
   }
-  return (data as CategoryRow[]).map((row) => ({ id: row.id, label: row.label }));
+  const rows = (data as CategoryRow[]).map((row) => ({
+    id: row.id,
+    label: row.label,
+  }));
+  return rows.length ? rows : defaultCategories;
 }
 
 export async function createCategory(raw: string): Promise<KnowledgeCategory> {

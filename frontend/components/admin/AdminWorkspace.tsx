@@ -43,6 +43,7 @@ export function AdminWorkspace() {
     retryAll,
     remove,
     loadState,
+    loadError,
     reload,
   } = useDocuments();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -464,7 +465,7 @@ export function AdminWorkspace() {
         <Alert
           tone="danger"
           title={copy.admin.loadErrorTitle}
-          body={copy.admin.loadErrorBody}
+          body={loadError ?? copy.admin.loadErrorBody}
           action={
             <Button variant="secondary" onClick={() => void reload()}>
               {copy.admin.retryLoad}

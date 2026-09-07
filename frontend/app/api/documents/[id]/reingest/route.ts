@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { IngestUserError, reingestDocument } from "@/lib/server/documents";
-import { assertSupabaseSecrets } from "@/lib/server/env";
+import { assertDocumentSecrets } from "@/lib/server/env";
+import { withDocumentsClient } from "@/lib/server/supabase-admin";
 import { isAdminActor, requireAdmin } from "@/lib/server/require-admin";
 
 type Context = { params: Promise<{ id: string }> };
@@ -9,7 +10,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(request: Request, context: Context) {
-  const configured = assertSupabaseSecrets();
+  const configured = assertDocumentSecrets();
   if (configured) {
     return NextResponse.json({ error: configured }, { status: 503 });
   }
@@ -21,7 +22,9 @@ export async function POST(request: Request, context: Context) {
 
   const { id } = await context.params;
   try {
-    const document = await reingestDocument(id);
+    const document = await withDocumentsClient(request, () =>
+      reingestDocument(id),
+    );
     return NextResponse.json({ document });
   } catch (exc) {
     if (exc instanceof IngestUserError) {

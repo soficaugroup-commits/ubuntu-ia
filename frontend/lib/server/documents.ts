@@ -1,8 +1,13 @@
-import { mkdir, unlink, writeFile } from "fs/promises";
-import path from "path";
-import { INDEXABLE_EXTENSIONS } from "@/lib/upload-files";
+import { fileExtension } from "@/lib/upload-files";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
-import { documentsStorageDir, queueReingest } from "@/lib/server/ingest-worker";
+import {
+  deleteStoredFile,
+  indexRemoteUrl,
+  indexStoredFile,
+  indexUploadedFile,
+  markDocumentError,
+  uploadDocumentFile,
+} from "@/lib/server/index-document";
 import type { KnowledgeDocument } from "@/lib/types";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
@@ -18,6 +23,9 @@ type DocumentRow = {
   statut_indexation: KnowledgeDocument["statut_indexation"];
   message_erreur: string | null;
 };
+
+const DOCUMENT_COLUMNS =
+  "id, titre, categorie, type_source, url_source, date_ajout, chemin_stockage, statut_indexation, message_erreur";
 
 export function mapDocument(row: DocumentRow): KnowledgeDocument {
   return {
@@ -35,9 +43,7 @@ export function mapDocument(row: DocumentRow): KnowledgeDocument {
 export async function listDocuments(): Promise<KnowledgeDocument[]> {
   const { data, error } = await supabaseAdmin()
     .from("documents")
-    .select(
-      "id, titre, categorie, type_source, url_source, date_ajout, chemin_stockage, statut_indexation, message_erreur",
-    )
+    .select(DOCUMENT_COLUMNS)
     .order("date_ajout", { ascending: false });
   if (error) {
     throw new Error("La liste des documents n'a pas pu être chargée.");
@@ -45,9 +51,26 @@ export async function listDocuments(): Promise<KnowledgeDocument[]> {
   return (data as DocumentRow[]).map(mapDocument);
 }
 
-function fileExtension(name: string): string | null {
-  const ext = path.extname(name).toLowerCase();
-  return (INDEXABLE_EXTENSIONS as readonly string[]).includes(ext) ? ext : null;
+const STORED_PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.[a-z0-9]{2,8}$/i;
+
+function assertStoredPath(path: string): string {
+  const trimmed = path.trim();
+  if (!STORED_PATH.test(trimmed)) {
+    throw new IngestUserError("Le fichier stocké est introuvable ou invalide.");
+  }
+  return trimmed;
+}
+
+async function fetchDocument(id: string): Promise<DocumentRow> {
+  const { data, error } = await supabaseAdmin()
+    .from("documents")
+    .select(DOCUMENT_COLUMNS)
+    .eq("id", id)
+    .single();
+  if (error || !data) {
+    throw new IngestUserError("Document introuvable.");
+  }
+  return data as DocumentRow;
 }
 
 export async function createFileDocument(
@@ -76,38 +99,66 @@ export async function createFileDocument(
       type_source: "fichier",
       statut_indexation: "en_cours",
     })
-    .select(
-      "id, titre, categorie, type_source, url_source, date_ajout, chemin_stockage, statut_indexation, message_erreur",
-    )
+    .select(DOCUMENT_COLUMNS)
     .single();
   if (error || !data) {
     throw new Error("Le document n'a pas pu être enregistré.");
   }
 
-  const stored = path.join(documentsStorageDir(), `${data.id}${ext}`);
   try {
-    await mkdir(documentsStorageDir(), { recursive: true });
-    await writeFile(stored, Buffer.from(await file.arrayBuffer()));
-    const updated = await admin
-      .from("documents")
-      .update({ chemin_stockage: stored })
-      .eq("id", data.id)
-      .select(
-        "id, titre, categorie, type_source, url_source, date_ajout, chemin_stockage, statut_indexation, message_erreur",
-      )
-      .single();
-    queueReingest(data.id);
-    return mapDocument((updated.data as DocumentRow) ?? (data as DocumentRow));
+    const stored = await uploadDocumentFile(data.id, file);
+    await admin.from("documents").update({ chemin_stockage: stored }).eq("id", data.id);
+    await indexUploadedFile(data.id, file);
   } catch (exc) {
-    await admin
-      .from("documents")
-      .update({
-        statut_indexation: "erreur",
-        message_erreur: "Le fichier n'a pas pu être enregistré pour indexation.",
-      })
-      .eq("id", data.id);
-    throw exc;
+    const message =
+      exc instanceof Error
+        ? exc.message
+        : "L'indexation n'a pas pu aboutir.";
+    await markDocumentError(data.id, message);
   }
+
+  return mapDocument(await fetchDocument(data.id));
+}
+
+export async function createStoredFileDocument(
+  storagePath: string,
+  filename: string,
+  categorie: string,
+): Promise<KnowledgeDocument> {
+  const stored = assertStoredPath(storagePath);
+  const ext = fileExtension(filename) || fileExtension(stored);
+  if (!ext) {
+    throw new IngestUserError(
+      "Ce format n'est pas accepté. Envoyez un PDF, Word, Excel, PowerPoint, CSV, texte, image ou infographie.",
+    );
+  }
+
+  const titre = filename.replace(/\.[^.]+$/, "") || filename;
+  const admin = supabaseAdmin();
+  const { data, error } = await admin
+    .from("documents")
+    .insert({
+      titre,
+      categorie: categorie || null,
+      type_source: "fichier",
+      chemin_stockage: stored,
+      statut_indexation: "en_cours",
+    })
+    .select(DOCUMENT_COLUMNS)
+    .single();
+  if (error || !data) {
+    throw new Error("Le document n'a pas pu être enregistré.");
+  }
+
+  try {
+    await indexStoredFile(data.id, stored, filename);
+  } catch (exc) {
+    const message =
+      exc instanceof Error ? exc.message : "L'indexation n'a pas pu aboutir.";
+    await markDocumentError(data.id, message);
+  }
+
+  return mapDocument(await fetchDocument(data.id));
 }
 
 export async function createUrlDocument(
@@ -123,15 +174,21 @@ export async function createUrlDocument(
       url_source: url,
       statut_indexation: "en_cours",
     })
-    .select(
-      "id, titre, categorie, type_source, url_source, date_ajout, chemin_stockage, statut_indexation, message_erreur",
-    )
+    .select(DOCUMENT_COLUMNS)
     .single();
   if (error || !data) {
     throw new Error("La page n'a pas pu être enregistrée.");
   }
-  queueReingest(data.id);
-  return mapDocument(data as DocumentRow);
+
+  try {
+    await indexRemoteUrl(data.id, url);
+  } catch (exc) {
+    const message =
+      exc instanceof Error ? exc.message : "L'indexation de la page n'a pas pu aboutir.";
+    await markDocumentError(data.id, message);
+  }
+
+  return mapDocument(await fetchDocument(data.id));
 }
 
 export async function reingestAllDocuments(): Promise<KnowledgeDocument[]> {
@@ -149,24 +206,42 @@ export async function reingestDocument(id: string): Promise<KnowledgeDocument> {
     .from("documents")
     .update({ statut_indexation: "en_cours", message_erreur: null })
     .eq("id", id)
-    .select(
-      "id, titre, categorie, type_source, url_source, date_ajout, chemin_stockage, statut_indexation, message_erreur",
-    )
+    .select(DOCUMENT_COLUMNS)
     .single();
   if (error || !data) {
     throw new IngestUserError("Document introuvable.");
   }
-  queueReingest(id);
-  return mapDocument(data as DocumentRow);
+  const document = data as DocumentRow;
+
+  try {
+    if (document.type_source === "url") {
+      if (!document.url_source) {
+        throw new Error("Cette page n'a pas d'adresse à relire.");
+      }
+      await indexRemoteUrl(id, document.url_source);
+    } else {
+      const storage = document.chemin_stockage;
+      if (!storage || storage.includes(":\\") || storage.startsWith("/")) {
+        throw new Error(
+          "Ce fichier a été indexé hors production. Renvoyez-le pour l'enregistrer dans le stockage.",
+        );
+      }
+      await indexStoredFile(id, storage, storage);
+    }
+  } catch (exc) {
+    const message =
+      exc instanceof Error ? exc.message : "La réindexation n'a pas pu aboutir.";
+    await markDocumentError(id, message);
+  }
+
+  return mapDocument(await fetchDocument(id));
 }
 
 export async function deleteStoredDocument(id: string): Promise<KnowledgeDocument> {
   const admin = supabaseAdmin();
   const { data, error } = await admin
     .from("documents")
-    .select(
-      "id, titre, categorie, type_source, url_source, date_ajout, chemin_stockage, statut_indexation, message_erreur",
-    )
+    .select(DOCUMENT_COLUMNS)
     .eq("id", id)
     .maybeSingle();
   if (error || !data) {
@@ -179,13 +254,7 @@ export async function deleteStoredDocument(id: string): Promise<KnowledgeDocumen
     throw new Error("Le document n'a pas pu être supprimé.");
   }
 
-  if (stored) {
-    const root = path.resolve(documentsStorageDir());
-    const resolved = path.resolve(stored);
-    if (resolved.startsWith(root)) {
-      await unlink(resolved).catch(() => undefined);
-    }
-  }
+  await deleteStoredFile(stored);
   return mapDocument(data as DocumentRow);
 }
 

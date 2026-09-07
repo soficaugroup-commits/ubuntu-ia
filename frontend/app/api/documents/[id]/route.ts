@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { deleteStoredDocument, IngestUserError } from "@/lib/server/documents";
-import { assertSupabaseSecrets } from "@/lib/server/env";
+import { assertDocumentSecrets } from "@/lib/server/env";
+import { withDocumentsClient } from "@/lib/server/supabase-admin";
 import { isAdminActor, requireAdmin } from "@/lib/server/require-admin";
 
 type Context = { params: Promise<{ id: string }> };
 
 export async function DELETE(request: Request, context: Context) {
-  const configured = assertSupabaseSecrets();
+  const configured = assertDocumentSecrets();
   if (configured) {
     return NextResponse.json({ error: configured }, { status: 503 });
   }
@@ -18,7 +19,9 @@ export async function DELETE(request: Request, context: Context) {
 
   const { id } = await context.params;
   try {
-    const document = await deleteStoredDocument(id);
+    const document = await withDocumentsClient(request, () =>
+      deleteStoredDocument(id),
+    );
     return NextResponse.json({ document });
   } catch (exc) {
     if (exc instanceof IngestUserError) {

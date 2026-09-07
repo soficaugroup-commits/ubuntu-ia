@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/server/supabase-admin";
+import { supabaseForRequest } from "@/lib/server/supabase-admin";
 import type { UserRole } from "@/lib/types";
 
 export type AdminActor = {
@@ -16,7 +16,16 @@ export async function requireAdmin(
     return { error: "Session expirée. Reconnectez-vous.", status: 401 };
   }
 
-  const admin = supabaseAdmin();
+  let admin;
+  try {
+    admin = supabaseForRequest(request);
+  } catch {
+    return {
+      error: "Le service documentaire n'est pas configuré (Supabase).",
+      status: 503,
+    };
+  }
+
   const { data, error } = await admin.auth.getUser(token);
   if (error || !data.user) {
     return { error: "Session expirée. Reconnectez-vous.", status: 401 };

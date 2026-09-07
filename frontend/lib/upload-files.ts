@@ -40,3 +40,10 @@ export const INDEXABLE_ACCEPT = [
   ...INDEXABLE_EXTENSIONS,
   ...INDEXABLE_MIME_TYPES,
 ].join(",");
+
+export function fileExtension(name: string): string | null {
+  const ext = name.includes(".")
+    ? `.${name.split(".").pop()?.toLowerCase()}`
+    : "";
+  return (INDEXABLE_EXTENSIONS as readonly string[]).includes(ext) ? ext : null;
+}

@@ -1,26 +1,46 @@
-import { mergeDocumentCategories } from "@/lib/categories";
+import { adminGet } from "@/lib/admin-api";
+import { defaultCategories, mergeDocumentCategories } from "@/lib/categories";
 import { supabaseBrowser } from "@/lib/supabase";
 import type { KnowledgeCategory, KnowledgeDocument } from "@/lib/types";
 
 export async function listKnowledgeFromSession(): Promise<
   | { ok: true; documents: KnowledgeDocument[]; categories: KnowledgeCategory[] }
-  | { ok: false }
+  | { ok: false; error: string }
 > {
+  const fromApi = await adminGet<{
+    documents: KnowledgeDocument[];
+    categories: KnowledgeCategory[];
+  }>("/api/documents");
+  if (fromApi.ok && Array.isArray(fromApi.data.documents)) {
+    return {
+      ok: true,
+      documents: fromApi.data.documents,
+      categories: Array.isArray(fromApi.data.categories)
+        ? fromApi.data.categories
+        : mergeDocumentCategories(defaultCategories, fromApi.data.documents),
+    };
+  }
+
   const supabase = supabaseBrowser();
-  if (!supabase) return { ok: false };
+  if (!supabase) {
+    return {
+      ok: false,
+      error: fromApi.ok === false ? fromApi.error : "Supabase n'est pas configuré.",
+    };
+  }
 
-  const [documentsResult, categoriesResult] = await Promise.all([
-    supabase
-      .from("documents")
-      .select(
-        "id, titre, categorie, type_source, url_source, date_ajout, statut_indexation, message_erreur",
-      )
-      .order("date_ajout", { ascending: false }),
-    supabase.from("document_categories").select("id, label").order("label"),
-  ]);
+  const documentsResult = await supabase
+    .from("documents")
+    .select(
+      "id, titre, categorie, type_source, url_source, date_ajout, statut_indexation, message_erreur",
+    )
+    .order("date_ajout", { ascending: false });
 
-  if (documentsResult.error || categoriesResult.error) {
-    return { ok: false };
+  if (documentsResult.error) {
+    return {
+      ok: false,
+      error: fromApi.ok === false ? fromApi.error : documentsResult.error.message,
+    };
   }
 
   const documents = (documentsResult.data ?? []).map((row) => ({
@@ -34,11 +54,18 @@ export async function listKnowledgeFromSession(): Promise<
     message_erreur: row.message_erreur,
   })) as KnowledgeDocument[];
 
+  const categoriesResult = await supabase
+    .from("document_categories")
+    .select("id, label")
+    .order("label");
+
   const categories = mergeDocumentCategories(
-    (categoriesResult.data ?? []).map((row) => ({
-      id: row.id,
-      label: row.label,
-    })),
+    categoriesResult.error
+      ? defaultCategories
+      : (categoriesResult.data ?? []).map((row) => ({
+          id: row.id,
+          label: row.label,
+        })),
     documents,
   );
 

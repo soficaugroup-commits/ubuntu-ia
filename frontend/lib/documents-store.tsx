@@ -12,6 +12,7 @@ import {
 import { adminDelete, adminPost, adminPostForm } from "@/lib/admin-api";
 import { defaultCategories, validateNewCategory } from "@/lib/categories";
 import { listKnowledgeFromSession } from "@/lib/knowledge-list";
+import { uploadKnowledgeFile } from "@/lib/upload-to-storage";
 import { useSession } from "@/lib/session";
 import {
   INDEXABLE_EXTENSIONS,
@@ -35,6 +36,7 @@ type DocumentsContextValue = {
   categories: KnowledgeCategory[];
   hasEverHadDocuments: boolean;
   loadState: "loading" | "ready" | "error";
+  loadError: string | null;
   reload: () => Promise<void>;
   addFile: (
     file: File,
@@ -110,16 +112,21 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
   const [categories, setCategories] = useState<KnowledgeCategory[]>(defaultCategories);
   const [hasEverHadDocuments, setHasEverHadDocuments] = useState(false);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async (reportError = true) => {
     const result = await listKnowledgeFromSession();
     if (!result.ok) {
-      if (reportError) setLoadState("error");
+      if (reportError) {
+        setLoadError(result.error);
+        setLoadState("error");
+      }
       return;
     }
     setDocuments(result.documents);
     setCategories(result.categories);
     if (result.documents.length > 0) setHasEverHadDocuments(true);
+    setLoadError(null);
     setLoadState("ready");
   }, []);
 
@@ -160,13 +167,24 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
       const check = validateUploadFile(file);
       if (!check.ok) return check;
 
-      const form = new FormData();
-      form.append("file", file);
-      form.append("categorie", categorie);
-      const result = await adminPostForm<{ document: KnowledgeDocument }>(
-        "/api/documents",
-        form,
-      );
+      const uploaded = await uploadKnowledgeFile(file);
+      const result = uploaded.ok
+        ? await adminPost<{ document: KnowledgeDocument }>("/api/documents", {
+            storagePath: uploaded.storagePath,
+            filename: file.name,
+            categorie,
+          })
+        : uploaded.message === "Le stockage n'est pas configuré."
+          ? await adminPostForm<{ document: KnowledgeDocument }>(
+              "/api/documents",
+              (() => {
+                const form = new FormData();
+                form.append("file", file);
+                form.append("categorie", categorie);
+                return form;
+              })(),
+            )
+          : { ok: false as const, error: uploaded.message };
       if (!result.ok) {
         return { ok: false, code: "ingest", message: result.error };
       }
@@ -267,6 +285,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
       categories,
       hasEverHadDocuments,
       loadState,
+      loadError,
       reload,
       addFile,
       addUrl,
@@ -280,6 +299,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
       categories,
       hasEverHadDocuments,
       loadState,
+      loadError,
       reload,
       addFile,
       addUrl,

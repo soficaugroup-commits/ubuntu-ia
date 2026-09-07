@@ -1,4 +1,9 @@
-import { openrouterApiKey, visionModel } from "@/lib/server/env";
+import {
+  OPENROUTER_BASE_URL,
+  openRouterHeaders,
+  requireOpenRouterKey,
+  visionModel,
+} from "@/lib/server/env";
 
 const IMAGE_MIME: Record<string, string> = {
   ".png": "image/png",
@@ -164,17 +169,11 @@ async function extractPdf(buffer: Buffer): Promise<string> {
 }
 
 async function describeImage(buffer: Buffer, mime: string): Promise<string> {
-  const key = openrouterApiKey();
-  if (!key) {
-    throw new Error("OPENROUTER_API_KEY n'est pas configurée pour lire les images.");
-  }
+  const key = requireOpenRouterKey();
   const encoded = buffer.toString("base64");
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
+    headers: openRouterHeaders(key),
     body: JSON.stringify({
       model: visionModel(),
       messages: [

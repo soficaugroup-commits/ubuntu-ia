@@ -18,8 +18,35 @@ export function resendFromEmail(): string {
   return process.env.RESEND_FROM_EMAIL?.trim() || "";
 }
 
+export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+
 export function openrouterApiKey(): string {
   return process.env.OPENROUTER_API_KEY?.trim() || "";
+}
+
+export function requireOpenRouterKey(): string {
+  const key = openrouterApiKey();
+  if (!key) {
+    throw new Error(
+      "OPENROUTER_API_KEY n'est pas configurée. Dans Netlify, ajoutez votre clé OpenRouter personnelle (sk-or-v1-…).",
+    );
+  }
+  if (!key.startsWith("sk-or-v1-")) {
+    throw new Error(
+      "Netlify a injecté la clé de sa passerelle IA, inutilisable pour l'indexation. Dans Netlify → Environment variables, définissez OPENROUTER_API_KEY avec votre clé OpenRouter (sk-or-v1-…), puis redéployez.",
+    );
+  }
+  return key;
+}
+
+export function openRouterHeaders(key: string): HeadersInit {
+  return {
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+    "HTTP-Referer":
+      process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://ubuntu-ia.com",
+    "X-Title": "Ubuntu IA",
+  };
 }
 
 export function visionModel(): string {

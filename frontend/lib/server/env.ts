@@ -1,23 +1,51 @@
 import "server-only";
+import { env as nodeEnv } from "node:process";
 
-function readEnv(name: string): string {
-  return process.env[name]?.trim() || "";
+function cleanEnv(value: string | undefined): string {
+  return (value ?? "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/^Bearer\s+/i, "");
+}
+
+function liveEnv(name: string): string {
+  return cleanEnv(nodeEnv[name]) || cleanEnv(process.env[name]);
 }
 
 export function supabaseUrl(): string {
-  return readEnv("SUPABASE_URL") || readEnv("NEXT_PUBLIC_SUPABASE_URL");
+  return liveEnv("SUPABASE_URL") || liveEnv("NEXT_PUBLIC_SUPABASE_URL");
 }
 
 export function supabaseServiceKey(): string {
-  return readEnv("SUPABASE_SERVICE_ROLE_KEY");
+  return liveEnv("SUPABASE_SERVICE_ROLE_KEY");
 }
 
 export function resendApiKey(): string {
-  return readEnv("RESEND_API_KEY");
+  return liveEnv("RESEND_API_KEY");
 }
 
 export function resendFromEmail(): string {
-  return readEnv("RESEND_FROM_EMAIL");
+  return liveEnv("RESEND_FROM_EMAIL");
+}
+
+function llmRuntimeVars() {
+  void process.env.OPENROUTER_API_KEY;
+  void process.env.OPENROUTER_BASE_URL;
+  void process.env.NETLIFY_AI_GATEWAY_KEY;
+  void process.env.NETLIFY_AI_GATEWAY_BASE_URL;
+  void process.env.OPENAI_API_KEY;
+  void process.env.OPENAI_BASE_URL;
+  void process.env.UBUNTU_OPENROUTER_API_KEY;
+
+  return {
+    ubuntu: liveEnv("UBUNTU_OPENROUTER_API_KEY"),
+    openrouterKey: liveEnv("OPENROUTER_API_KEY"),
+    openrouterBase: trimSlash(liveEnv("OPENROUTER_BASE_URL")),
+    gatewayKey: liveEnv("NETLIFY_AI_GATEWAY_KEY"),
+    gatewayBase: trimSlash(liveEnv("NETLIFY_AI_GATEWAY_BASE_URL")),
+    openaiKey: liveEnv("OPENAI_API_KEY"),
+    openaiBase: trimSlash(liveEnv("OPENAI_BASE_URL")),
+  };
 }
 
 export const OPENROUTER_OFFICIAL_BASE = "https://openrouter.ai/api/v1";
@@ -40,27 +68,37 @@ function isOfficialOpenRouterBase(url: string): boolean {
 }
 
 export function resolveLlmEndpoint(): LlmEndpoint {
-  const personalKey = readEnv("UBUNTU_OPENROUTER_API_KEY") || readEnv("OPENROUTER_API_KEY");
-  if (isPersonalOpenRouterKey(personalKey)) {
-    return { key: personalKey, baseUrl: OPENROUTER_OFFICIAL_BASE };
+  const env = llmRuntimeVars();
+
+  if (isPersonalOpenRouterKey(env.ubuntu) || isPersonalOpenRouterKey(env.openrouterKey)) {
+    return {
+      key: isPersonalOpenRouterKey(env.ubuntu) ? env.ubuntu : env.openrouterKey,
+      baseUrl: OPENROUTER_OFFICIAL_BASE,
+    };
   }
 
-  const openRouterKey = readEnv("OPENROUTER_API_KEY");
-  const openRouterBase = trimSlash(readEnv("OPENROUTER_BASE_URL"));
-  if (openRouterKey && openRouterBase && !isOfficialOpenRouterBase(openRouterBase)) {
-    return { key: openRouterKey, baseUrl: openRouterBase };
+  if (env.openrouterKey && env.openrouterBase && !isOfficialOpenRouterBase(env.openrouterBase)) {
+    return { key: env.openrouterKey, baseUrl: env.openrouterBase };
   }
 
-  const gatewayKey = readEnv("NETLIFY_AI_GATEWAY_KEY");
-  const gatewayBase = trimSlash(readEnv("NETLIFY_AI_GATEWAY_BASE_URL"));
-  if (gatewayKey && gatewayBase) {
-    return { key: gatewayKey, baseUrl: gatewayBase };
+  if (env.gatewayKey && env.gatewayBase) {
+    return { key: env.gatewayKey, baseUrl: env.gatewayBase };
   }
 
-  const openaiKey = readEnv("OPENAI_API_KEY");
-  const openaiBase = trimSlash(readEnv("OPENAI_BASE_URL"));
-  if (openaiKey && openaiBase) {
-    return { key: openaiKey, baseUrl: openaiBase };
+  if (env.openrouterKey && env.gatewayBase) {
+    return { key: env.openrouterKey, baseUrl: env.gatewayBase };
+  }
+
+  if (env.gatewayKey && env.openrouterBase && !isOfficialOpenRouterBase(env.openrouterBase)) {
+    return { key: env.gatewayKey, baseUrl: env.openrouterBase };
+  }
+
+  if (env.openaiKey && env.openaiBase) {
+    return { key: env.openaiKey, baseUrl: env.openaiBase };
+  }
+
+  if (env.openrouterKey && env.openrouterBase) {
+    return { key: env.openrouterKey, baseUrl: env.openrouterBase };
   }
 
   throw new Error(
@@ -100,18 +138,17 @@ export function openRouterHeaders(key: string): HeadersInit {
   return {
     Authorization: `Bearer ${key}`,
     "Content-Type": "application/json",
-    "HTTP-Referer":
-      readEnv("NEXT_PUBLIC_APP_URL") || "https://ubuntu-ia.com",
+    "HTTP-Referer": liveEnv("NEXT_PUBLIC_APP_URL") || "https://ubuntu-ia.com",
     "X-Title": "Ubuntu IA",
   };
 }
 
 export function visionModel(): string {
-  return readEnv("VISION_MODEL") || "openai/gpt-4o-mini";
+  return liveEnv("VISION_MODEL") || "openai/gpt-4o-mini";
 }
 
 export function appUrl(request: Request): string {
-  const configured = readEnv("NEXT_PUBLIC_APP_URL") || readEnv("APP_URL");
+  const configured = liveEnv("NEXT_PUBLIC_APP_URL") || liveEnv("APP_URL");
   if (configured) return configured.replace(/\/$/, "");
   return new URL(request.url).origin;
 }

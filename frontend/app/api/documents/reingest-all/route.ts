@@ -4,6 +4,11 @@ import { assertDocumentSecrets } from "@/lib/server/env";
 import { withDocumentsClient } from "@/lib/server/supabase-admin";
 import { isAdminActor, requireAdmin } from "@/lib/server/require-admin";
 
+void process.env.OPENROUTER_API_KEY;
+void process.env.OPENROUTER_BASE_URL;
+void process.env.NETLIFY_AI_GATEWAY_KEY;
+void process.env.NETLIFY_AI_GATEWAY_BASE_URL;
+
 export const runtime = "nodejs";
 export const maxDuration = 60;
 

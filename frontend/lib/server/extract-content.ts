@@ -117,7 +117,7 @@ async function extractXlsx(buffer: Buffer): Promise<string> {
 async function extractXlsxWithExcelJs(buffer: Buffer): Promise<string> {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer, {
+  await workbook.xlsx.load(buffer as never, {
     ignoreNodes: ["dataValidations", "extLst"],
   });
   const parts: string[] = [];

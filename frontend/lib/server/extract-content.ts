@@ -107,19 +107,27 @@ async function extractDocx(buffer: Buffer): Promise<string> {
 }
 
 async function extractXlsx(buffer: Buffer): Promise<string> {
+  try {
+    return await extractXlsxWithExcelJs(buffer);
+  } catch {
+    return extractXlsxFromZip(buffer);
+  }
+}
+
+async function extractXlsxWithExcelJs(buffer: Buffer): Promise<string> {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+  await workbook.xlsx.load(buffer, {
+    ignoreNodes: ["dataValidations", "extLst"],
+  });
   const parts: string[] = [];
   workbook.eachSheet((sheet) => {
     const lines = [`# Feuille : ${sheet.name}`];
     sheet.eachRow((row) => {
       const cells = Array.isArray(row.values)
-        ? row.values
-            .slice(1)
-            .map((cell) => (cell == null ? "" : String(cell).trim()))
+        ? row.values.slice(1).map(excelCellText).filter(Boolean)
         : [];
-      if (cells.some(Boolean)) lines.push(cells.join(" | "));
+      if (cells.length) lines.push(cells.join(" | "));
     });
     if (lines.length > 1) parts.push(lines.join("\n"));
   });
@@ -127,6 +135,141 @@ async function extractXlsx(buffer: Buffer): Promise<string> {
     throw new Error("Le classeur Excel ne contient pas de données exploitables.");
   }
   return parts.join("\n\n");
+}
+
+function excelCellText(value: unknown): string {
+  if (value == null || value === "") return "";
+  if (typeof value === "string") return value.replace(/\s+/g, " ").trim();
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value !== "object") return String(value).trim();
+
+  const cell = value as {
+    richText?: { text?: string }[];
+    result?: unknown;
+    text?: string;
+    hyperlink?: string;
+    error?: string;
+    formula?: string;
+    sharedFormula?: string;
+  };
+  if (Array.isArray(cell.richText)) {
+    return cell.richText
+      .map((part) => part.text ?? "")
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(cell, "result")) {
+    return excelCellText(cell.result);
+  }
+  if (cell.text) return String(cell.text).replace(/\s+/g, " ").trim();
+  if (cell.hyperlink) return String(cell.hyperlink).trim();
+  return "";
+}
+
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) =>
+      String.fromCharCode(parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_, dec: string) =>
+      String.fromCharCode(Number(dec)),
+    )
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+async function extractXlsxFromZip(buffer: Buffer): Promise<string> {
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(buffer);
+  const workbookXml = await zip.file("xl/workbook.xml")?.async("string");
+  if (!workbookXml) {
+    throw new Error("Le classeur Excel ne contient pas de données exploitables.");
+  }
+
+  const relsXml =
+    (await zip.file("xl/_rels/workbook.xml.rels")?.async("string")) ?? "";
+  const relTargets = new Map<string, string>();
+  for (const match of relsXml.matchAll(
+    /<Relationship\b([^>]*)\/?>/gi,
+  )) {
+    const attrs = match[1];
+    const id = /\bId="([^"]+)"/i.exec(attrs)?.[1];
+    const target = /\bTarget="([^"]+)"/i.exec(attrs)?.[1];
+    if (id && target) relTargets.set(id, target);
+  }
+
+  const sharedXml =
+    (await zip.file("xl/sharedStrings.xml")?.async("string")) ?? "";
+  const shared = [...sharedXml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/gi)].map(
+    (match) =>
+      [...match[1].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/gi)]
+        .map((token) => decodeXmlEntities(token[1]))
+        .join("")
+        .replace(/\s+/g, " ")
+        .trim(),
+  );
+
+  const parts: string[] = [];
+  for (const match of workbookXml.matchAll(/<sheet\b([^>\/]*)/gi)) {
+    const attrs = match[1];
+    const name = decodeXmlEntities(/\bname="([^"]*)"/i.exec(attrs)?.[1] ?? "");
+    const rid = /\br:id="([^"]*)"/i.exec(attrs)?.[1];
+    const target = rid ? relTargets.get(rid) : undefined;
+    if (!name || !target) continue;
+
+    const path = target.replace(/^\//, "");
+    const sheetPath = path.startsWith("xl/") ? path : `xl/${path}`;
+    const sheetXml = await zip.file(sheetPath)?.async("string");
+    if (!sheetXml) continue;
+
+    const lines = [`# Feuille : ${name}`];
+    for (const row of sheetXml.matchAll(/<(?:\w+:)?row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/gi)) {
+      const cells = [
+        ...row[1].matchAll(/<(?:\w+:)?c\b([^>]*)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/gi),
+      ]
+        .map((cell) => zipCellText(cell[1], cell[2] ?? "", shared))
+        .filter(Boolean);
+      if (cells.length) lines.push(cells.join(" | "));
+    }
+    if (lines.length > 1) parts.push(lines.join("\n"));
+  }
+
+  if (!parts.length) {
+    throw new Error("Le classeur Excel ne contient pas de données exploitables.");
+  }
+  return parts.join("\n\n");
+}
+
+function zipCellText(attrs: string, body: string, shared: string[]): string {
+  const type = /\bt="([^"]*)"/i.exec(attrs)?.[1] ?? "";
+  if (type === "s") {
+    const index = Number(/<(?:\w+:)?v\b[^>]*>([\s\S]*?)<\/(?:\w+:)?v>/i.exec(body)?.[1]);
+    return Number.isFinite(index) ? shared[index] ?? "" : "";
+  }
+  if (type === "inlineStr" || type === "str") {
+    return [...body.matchAll(/<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/gi)]
+      .map((token) => decodeXmlEntities(token[1]))
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim() || decodeXmlEntities(
+        /<(?:\w+:)?v\b[^>]*>([\s\S]*?)<\/(?:\w+:)?v>/i.exec(body)?.[1] ?? "",
+      ).trim();
+  }
+  if (type === "e" || type === "b") {
+    const raw = /<(?:\w+:)?v\b[^>]*>([\s\S]*?)<\/(?:\w+:)?v>/i.exec(body)?.[1] ?? "";
+    if (type === "e") return "";
+    return raw === "1" ? "true" : "false";
+  }
+  const raw = /<(?:\w+:)?v\b[^>]*>([\s\S]*?)<\/(?:\w+:)?v>/i.exec(body)?.[1];
+  return raw ? decodeXmlEntities(raw).trim() : "";
 }
 
 async function extractPptx(buffer: Buffer): Promise<string> {

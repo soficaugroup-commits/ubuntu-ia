@@ -32,15 +32,10 @@ export function chunkText(text: string): TextChunk[] {
       buffer = candidate;
       continue;
     }
-    if (buffer) {
-      flush(buffer);
-      const overlap =
-        OVERLAP_CHARS < buffer.length ? buffer.slice(-OVERLAP_CHARS) : buffer;
-      buffer = `${overlap}\n\n${paragraph}`.trim();
-      if (buffer.length > TARGET_CHARS * 1.3) {
-        flush(paragraph);
-        buffer = "";
-      }
+    if (buffer) flush(buffer);
+    buffer = "";
+    if (paragraph.length <= TARGET_CHARS) {
+      buffer = paragraph;
       continue;
     }
     for (let start = 0; start < paragraph.length; ) {

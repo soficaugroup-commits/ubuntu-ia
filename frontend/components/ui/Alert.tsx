@@ -11,9 +11,9 @@ type Props = {
   live?: "polite" | "assertive";
 };
 
-const tones: Record<Tone, { elevation: "raised" | "soft"; className: string }> = {
+const tones: Record<Tone, { elevation: "raised" | "soft" | "gold"; className: string }> = {
   info: { elevation: "raised", className: "" },
-  danger: { elevation: "raised", className: "bg-accent-subtle" },
+  danger: { elevation: "gold", className: "" },
   neutral: { elevation: "soft", className: "" },
 };
 

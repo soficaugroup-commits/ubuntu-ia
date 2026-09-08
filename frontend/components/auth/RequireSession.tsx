@@ -18,5 +18,9 @@ export function RequireSession({ children }: { children: ReactNode }) {
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      {children}
+    </div>
+  );
 }

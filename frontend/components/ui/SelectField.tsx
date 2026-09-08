@@ -12,6 +12,8 @@ import {
   type ReactNode,
 } from "react";
 import { Surface } from "@/components/ui/Surface";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { copy } from "@/content/fr";
 
 type Option = { value: string; label: string };
 
@@ -148,6 +150,7 @@ export function SelectField({
       <label htmlFor={id} className="text-sm font-semibold text-content">
         {label}
       </label>
+      <Tooltip label={copy.tips.selectOpen} className="w-full">
       <button
         ref={buttonRef}
         id={id}
@@ -180,6 +183,7 @@ export function SelectField({
           />
         </svg>
       </button>
+      </Tooltip>
       {open ? (
         <Surface
           elevation="raised"

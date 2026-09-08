@@ -1,4 +1,5 @@
 export type UserRole = "administrateur" | "utilisateur";
+export type AccountStatus = "actif" | "suspendu";
 
 export type SessionUser = {
   id: string;
@@ -7,6 +8,7 @@ export type SessionUser = {
   organisation: string;
   prenom?: string | null;
   nom?: string | null;
+  statut?: AccountStatus;
 };
 
 export type DocumentSourceType = "fichier" | "url";
@@ -29,12 +31,44 @@ export type KnowledgeDocument = {
   message_erreur?: string | null;
 };
 
+export type SourceOrigine = "index" | "web";
+
 export type SourceCitation = {
   documentId: string;
   titre: string;
   extrait: string;
   type_source: DocumentSourceType;
   url_source: string | null;
+  origine?: SourceOrigine;
+};
+
+export type ChatTools = {
+  image?: boolean;
+  canvas?: boolean;
+  file?: boolean;
+};
+
+export type FileFormat =
+  | "pdf"
+  | "docx"
+  | "xlsx"
+  | "pptx"
+  | "csv"
+  | "txt"
+  | "md"
+  | "json";
+
+export type GeneratedImage = {
+  url: string;
+  alt: string;
+};
+
+export type GeneratedFile = {
+  id: string;
+  name: string;
+  mime: string;
+  format: FileFormat | "png" | "jpeg" | "webp";
+  url: string;
 };
 
 export type AssistantStatus =
@@ -46,6 +80,14 @@ export type AssistantStatus =
   | "offline"
   | "stopped";
 
+export type ChatStepState = "queued" | "running" | "done" | "empty" | "error";
+
+export type ChatStep = {
+  id: string;
+  label: string;
+  state: ChatStepState;
+};
+
 export type ChatAttachment = {
   id: string;
   name: string;
@@ -53,6 +95,7 @@ export type ChatAttachment = {
   size: number;
   kind: "image" | "file";
   previewUrl?: string;
+  contentBase64?: string;
 };
 
 export type ChatMessage =
@@ -61,6 +104,7 @@ export type ChatMessage =
       role: "user";
       content: string;
       attachments?: ChatAttachment[];
+      tools?: ChatTools;
       createdAt: string;
     }
   | {
@@ -68,6 +112,9 @@ export type ChatMessage =
       role: "assistant";
       content: string;
       sources: SourceCitation[];
+      images?: GeneratedImage[];
+      files?: GeneratedFile[];
+      steps?: ChatStep[];
       status: AssistantStatus;
       createdAt: string;
     };
@@ -77,4 +124,33 @@ export type Conversation = {
   title: string;
   updatedAt: string;
   messages: ChatMessage[];
+};
+
+export type MemoryFact = {
+  id: string;
+  cle: string;
+  valeur: string;
+  sourceConversationId?: string | null;
+  dateCreation: string;
+  dateMaj: string;
+};
+
+export type FeedbackType = "positif" | "negatif";
+
+export type MessageFeedback = {
+  id: string;
+  conversationId: string | null;
+  messageId: string | null;
+  messageIndex: number | null;
+  type: FeedbackType;
+  commentaire: string | null;
+  dateCreation: string;
+};
+
+export type AdminFeedback = MessageFeedback & {
+  userId: string;
+  userEmail: string;
+  userName: string;
+  extraitQuestion: string | null;
+  extraitReponse: string | null;
 };

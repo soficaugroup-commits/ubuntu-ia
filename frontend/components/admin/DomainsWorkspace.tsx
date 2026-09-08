@@ -138,7 +138,7 @@ export function DomainsWorkspace() {
             }}
           />
           <div>
-            <Button type="submit" pending={pending}>
+            <Button type="submit" pending={pending} tooltip={copy.admin.domains.tipAdd}>
               {pending ? copy.admin.domains.adding : copy.admin.domains.add}
             </Button>
           </div>
@@ -173,7 +173,11 @@ export function DomainsWorkspace() {
           title={copy.admin.domains.loadErrorTitle}
           body={copy.admin.domains.loadErrorBody}
           action={
-            <Button variant="secondary" onClick={() => void load()}>
+            <Button
+              variant="secondary"
+              tooltip={copy.admin.domains.tipRetryLoad}
+              onClick={() => void load()}
+            >
               {copy.admin.domains.retryLoad}
             </Button>
           }
@@ -198,7 +202,9 @@ export function DomainsWorkspace() {
                   <Button
                     variant="danger"
                     disabled={lastRemaining}
-                    title={lastRemaining ? copy.admin.domains.lastHint : undefined}
+                    tooltip={
+                      lastRemaining ? copy.admin.domains.lastHint : copy.admin.domains.tipDelete
+                    }
                     onClick={() => setPendingDelete(item)}
                   >
                     {copy.admin.domains.delete}
@@ -226,7 +232,9 @@ export function DomainsWorkspace() {
                       <Button
                         variant="danger"
                         disabled={lastRemaining}
-                        title={lastRemaining ? copy.admin.domains.lastHint : undefined}
+                        tooltip={
+                          lastRemaining ? copy.admin.domains.lastHint : copy.admin.domains.tipDelete
+                        }
                         onClick={() => setPendingDelete(item)}
                       >
                         {copy.admin.domains.delete}

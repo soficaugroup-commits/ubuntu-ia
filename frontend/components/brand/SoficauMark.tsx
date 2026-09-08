@@ -17,7 +17,15 @@ export function SoficauMark({ size = 32 }: Props) {
         role="img"
         aria-label={copy.product.markAlt}
       >
+        <defs>
+          <linearGradient id="soficau-mark-sheen" x1="16" y1="0" x2="16" y2="32">
+            <stop offset="0%" stopColor="#fff" stopOpacity="0.32" />
+            <stop offset="42%" stopColor="#fff" stopOpacity="0" />
+            <stop offset="100%" stopColor="#000" stopOpacity="0.22" />
+          </linearGradient>
+        </defs>
         <circle cx="16" cy="16" r="16" fill="currentColor" />
+        <circle cx="16" cy="16" r="16" fill="url(#soficau-mark-sheen)" />
         <path
           d="M11.2 22.4V9.6h5.1c2.7 0 4.4 1.6 4.4 3.9 0 1.5-.8 2.7-2.1 3.3 1.6.5 2.6 1.8 2.6 3.6 0 2.5-1.8 4-4.8 4h-5.2zm2.4-7.3h2.4c1.3 0 2.1-.7 2.1-1.8s-.8-1.8-2.1-1.8h-2.4v3.6zm0 5.5h2.8c1.5 0 2.4-.8 2.4-2s-.9-2-2.4-2h-2.8v4z"
           fill="var(--ds-color-text-inverse)"

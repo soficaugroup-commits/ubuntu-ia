@@ -12,7 +12,7 @@ import {
 import { listAllowedDomains } from "@/lib/allowed-domains";
 import { emailDomain } from "@/lib/domains";
 import { supabaseBrowser } from "@/lib/supabase";
-import type { SessionUser, UserRole } from "@/lib/types";
+import type { AccountStatus, SessionUser, UserRole } from "@/lib/types";
 
 const FAILURES_KEY = "ubuntu-ia.auth-failures";
 const LOCK_KEY = "ubuntu-ia.auth-lock";
@@ -27,6 +27,7 @@ type AuthErrorCode =
   | "passwordLength"
   | "credentials"
   | "locked"
+  | "suspended"
   | "unavailable";
 
 export type AuthResult =
@@ -43,6 +44,7 @@ type SessionContextValue = {
   hydrated: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -63,12 +65,16 @@ function asRole(value: unknown): UserRole | null {
   return null;
 }
 
+function asStatus(value: unknown): AccountStatus {
+  return value === "suspendu" ? "suspendu" : "actif";
+}
+
 async function loadProfile(userId: string): Promise<SessionUser | null> {
   const supabase = supabaseBrowser();
   if (!supabase) return null;
   const { data, error } = await supabase
     .from("users")
-    .select("id, email, role, organisation, prenom, nom")
+    .select("id, email, role, organisation, prenom, nom, statut")
     .eq("id", userId)
     .maybeSingle();
   if (error || !data) return null;
@@ -81,6 +87,7 @@ async function loadProfile(userId: string): Promise<SessionUser | null> {
     organisation: data.organisation ?? "SOFICAU UBUNTU GROUP",
     prenom: data.prenom,
     nom: data.nom,
+    statut: asStatus(data.statut),
   };
 }
 
@@ -103,7 +110,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return;
         }
         const profile = await loadProfile(session.user.id);
-        if (!profile) {
+        if (!profile || profile.statut === "suspendu") {
           await supabase.auth.signOut();
           setUser(null);
           setHydrated(true);
@@ -172,6 +179,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await supabase.auth.signOut();
       return { ok: false, field: "form", code: "unavailable" };
     }
+    if (profile.statut === "suspendu") {
+      await supabase.auth.signOut();
+      return { ok: false, field: "form", code: "suspended" };
+    }
 
     window.sessionStorage.removeItem(FAILURES_KEY);
     window.sessionStorage.removeItem(LOCK_KEY);
@@ -188,9 +199,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const supabase = supabaseBrowser();
+    if (!supabase) return;
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) {
+      setUser(null);
+      return;
+    }
+    const profile = await loadProfile(data.user.id);
+    if (!profile || profile.statut === "suspendu") {
+      await supabase.auth.signOut();
+      setUser(null);
+      return;
+    }
+    setUser(profile);
+  }, []);
+
   const value = useMemo(
-    () => ({ user, hydrated, signIn, signOut }),
-    [user, hydrated, signIn, signOut],
+    () => ({ user, hydrated, signIn, signOut, refreshUser }),
+    [user, hydrated, signIn, signOut, refreshUser],
   );
 
   return (

@@ -88,7 +88,7 @@ export function LoginForm() {
           {formError ? (
             <Alert title={formError} body="" tone="danger" live="assertive" />
           ) : null}
-          <Button type="submit" pending={pending}>
+          <Button type="submit" pending={pending} tooltip={copy.auth.tipSubmit}>
             {pending ? copy.auth.submitting : copy.auth.submit}
           </Button>
         </form>

@@ -1,5 +1,5 @@
 ---
-description: Kit visuel Ubuntu IA — neumorphisme, tokens et golden path UI
+description: Kit visuel Ubuntu IA — skeuomorphisme, tokens et golden path UI
 alwaysApply: true
 ---
 
@@ -12,7 +12,7 @@ Autorité visuelle : `frontend/app/globals.css` + composants dans `frontend/comp
 - Couleurs de marque uniquement : marine `#17405B` (`bg-brand`, `text-content`) et or `#AD8859` (`bg-accent`, focus).
 - Neutres autorisés : canvas `#E8EEF2`, ombres dérivées du marine, texte atténué dérivé du marine.
 - Police : Poppins via `font-sans`. Ne pas charger une autre webfont.
-- Style : neumorphisme. Profondeur par ombres, pas par bordures dures.
+- Style : skeuomorphisme. Matériaux physiques (papier toilé, émail marine, laiton), lumière directionnelle depuis le haut, biseau et ombre portée. Pas de dual-shadow neumorphique.
 - Interdit : `#140A5F`, `#B70003`, vert/ambre, `box-shadow` ou `border-radius` bruts, classes Tailwind de palette (`bg-blue-500`, `text-red-600`).
 - Interdit : `<select>` natif (le menu OS a des coins droits et une surbrillance bleue). Toujours `SelectField`.
 
@@ -32,15 +32,15 @@ import { Button, SelectField, Surface, TextField } from "@/components/ui";
 </Surface>
 ```
 
-- Carte / panneau : `Surface` `raised` + `card`
-- Puits / champ / onglet actif : `Surface` `pressed` ou `TextField` / `SelectField`
-- Action primaire : `Button` (navy)
-- Accent / suppression : `Button variant="danger"` (or)
-- Toast / hint : `Surface` `soft` ou `gold` selon le ton
-- Bulle utilisateur : `bg-brand text-inverse` + élévation `bubble`
+- Carte / panneau : `Surface` `raised` + `card` (plaque de papier)
+- Puits / champ / onglet actif : `Surface` `pressed` ou `TextField` / `SelectField` (creux gravé)
+- Action primaire : `Button` (émail marine)
+- Accent / suppression : `Button variant="danger"` (laiton)
+- Toast / hint : `Surface` `soft` (papier) ou `gold` (laiton) selon le ton
+- Bulle utilisateur : `bg-brand text-inverse` + élévation `bubble` (émail)
 
 ## Nouvel écran
 
 1. Réutiliser un composant UI existant.
 2. Si le besoin revient 2 fois, extraire un pattern — ne pas inventer une 3e ombre.
-3. États : idéal, vide, chargement, erreur, succès — même élévation, pas un écran plat.
+3. États : idéal, vide, chargement, erreur, succès — même matériau, pas un écran plat.

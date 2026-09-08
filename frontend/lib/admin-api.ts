@@ -61,6 +61,29 @@ export async function adminPostForm<T>(
   return { ok: true, data: body as T };
 }
 
+export async function adminPatch<T>(
+  path: string,
+  payload: unknown,
+): Promise<{ ok: true; data: T } | { ok: false; error: string; field?: string }> {
+  const response = await fetch(path, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+    },
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: body.error || "La requête n'a pas abouti.",
+      field: body.field,
+    };
+  }
+  return { ok: true, data: body as T };
+}
+
 export async function adminDelete<T>(
   path: string,
 ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {

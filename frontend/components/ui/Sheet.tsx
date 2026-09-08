@@ -37,6 +37,8 @@ export function Sheet({
   const titleId = useId();
   const labelId = labelledBy ?? titleId;
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -44,7 +46,7 @@ export function Sheet({
     panelRef.current?.focus();
 
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current();
     }
 
     document.addEventListener("keydown", onKey);
@@ -55,7 +57,7 @@ export function Sheet({
       document.body.style.overflow = original;
       if (previous instanceof HTMLElement) previous.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

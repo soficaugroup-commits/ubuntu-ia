@@ -1,5 +1,30 @@
 import "server-only";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { env as nodeEnv } from "node:process";
+
+let loadedDotEnv = false;
+
+function loadDotEnvFiles() {
+  if (loadedDotEnv) return;
+  loadedDotEnv = true;
+  const files = [
+    resolve(process.cwd(), ".env"),
+    resolve(process.cwd(), ".env.local"),
+    resolve(process.cwd(), "..", ".env"),
+    resolve(process.cwd(), "..", ".env.local"),
+  ];
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+      const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+      if (!match) continue;
+      const [, name, raw] = match;
+      if (cleanEnv(nodeEnv[name]) || cleanEnv(process.env[name])) continue;
+      process.env[name] = raw;
+    }
+  }
+}
 
 function cleanEnv(value: string | undefined): string {
   return (value ?? "")
@@ -9,6 +34,7 @@ function cleanEnv(value: string | undefined): string {
 }
 
 function liveEnv(name: string): string {
+  loadDotEnvFiles();
   return cleanEnv(nodeEnv[name]) || cleanEnv(process.env[name]);
 }
 
@@ -36,6 +62,12 @@ function llmRuntimeVars() {
   void process.env.OPENAI_API_KEY;
   void process.env.OPENAI_BASE_URL;
   void process.env.UBUNTU_OPENROUTER_API_KEY;
+    void process.env.CHAT_MODEL;
+    void process.env.IMAGE_MODEL;
+    void process.env.VISION_MODEL;
+    void process.env.REALTIME_MODEL;
+    void process.env.REALTIME_VOICE;
+    void process.env.VOICE_STT_MODEL;
 
   return {
     ubuntu: liveEnv("UBUNTU_OPENROUTER_API_KEY"),
@@ -145,6 +177,53 @@ export function openRouterHeaders(key: string): HeadersInit {
 
 export function visionModel(): string {
   return liveEnv("VISION_MODEL") || "openai/gpt-4o-mini";
+}
+
+export function chatModel(endpoint: LlmEndpoint): string {
+  const configured = liveEnv("CHAT_MODEL");
+  if (configured) return configured;
+  const official =
+    isOfficialOpenRouterBase(endpoint.baseUrl) ||
+    endpoint.baseUrl.includes("openrouter");
+  return official ? "openai/gpt-6-astra" : "gpt-6-astra";
+}
+
+export function imageModel(endpoint: LlmEndpoint): string {
+  const configured = liveEnv("IMAGE_MODEL");
+  if (configured) return configured;
+  const official =
+    isOfficialOpenRouterBase(endpoint.baseUrl) ||
+    endpoint.baseUrl.includes("openrouter");
+  return official ? "openai/gpt-image-2" : "gpt-image-2";
+}
+
+export function imagesUrl(endpoint: LlmEndpoint): string {
+  return `${endpoint.baseUrl}/images`;
+}
+
+export function transcriptionsUrl(endpoint: LlmEndpoint): string {
+  return `${endpoint.baseUrl}/audio/transcriptions`;
+}
+
+export function realtimeModel(): string {
+  return liveEnv("REALTIME_MODEL") || "openai/gpt-audio-mini";
+}
+
+export function voiceSttModel(): string {
+  return liveEnv("VOICE_STT_MODEL") || "openai/whisper-1";
+}
+
+export function realtimeVoice(): string {
+  return liveEnv("REALTIME_VOICE") || "alloy";
+}
+
+export function assertRealtimeSecrets(): string | null {
+  try {
+    resolveLlmEndpoint();
+    return null;
+  } catch {
+    return "Le mode vocal n'est pas configuré (OPENROUTER_API_KEY).";
+  }
 }
 
 export function appUrl(request: Request): string {

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Surface } from "@/components/ui/Surface";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { copy } from "@/content/fr";
 
 export default function NotFound() {
   return (
@@ -10,12 +12,14 @@ export default function NotFound() {
           Cette adresse n&apos;existe pas dans Ubuntu IA. Revenez à la conversation
           ou à la connexion.
         </p>
-        <Link
-          href="/"
-          className="neo-bubble mt-6 inline-flex min-h-11 items-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-inverse"
-        >
-          Retour à Ubuntu IA
-        </Link>
+        <Tooltip label={copy.nav.tipHome}>
+          <Link
+            href="/"
+            className="neo-bubble mt-6 inline-flex min-h-11 items-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-inverse"
+          >
+            Retour à Ubuntu IA
+          </Link>
+        </Tooltip>
       </Surface>
     </main>
   );

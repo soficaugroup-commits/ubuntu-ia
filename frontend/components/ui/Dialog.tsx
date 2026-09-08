@@ -13,6 +13,8 @@ type Props = {
 export function Dialog({ open, title, children, onClose }: Props) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -21,7 +23,7 @@ export function Dialog({ open, title, children, onClose }: Props) {
 
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
       }
     }
 
@@ -32,7 +34,7 @@ export function Dialog({ open, title, children, onClose }: Props) {
         previous.focus();
       }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

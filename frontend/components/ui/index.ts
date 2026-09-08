@@ -8,3 +8,4 @@ export { Sheet } from "./Sheet";
 export { StatusBadge } from "./StatusBadge";
 export { Surface } from "./Surface";
 export { TextField } from "./TextField";
+export { Tooltip } from "./Tooltip";

@@ -10,6 +10,7 @@ import { SelectField } from "@/components/ui/SelectField";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Surface } from "@/components/ui/Surface";
 import { TextField } from "@/components/ui/TextField";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { copy } from "@/content/fr";
 import { ALL_CATEGORIES, categoryLabel, validateNewCategory } from "@/lib/categories";
 import {
@@ -311,7 +312,11 @@ export function AdminWorkspace() {
           <p className="text-content-muted">{copy.admin.pageLead}</p>
         </div>
         {documents.length > 0 ? (
-          <Button variant="secondary" onClick={() => setPendingAction({ kind: "retryAll" })}>
+          <Button
+            variant="secondary"
+            tooltip={copy.admin.tipRetryAll}
+            onClick={() => setPendingAction({ kind: "retryAll" })}
+          >
             {copy.admin.retryAll}
           </Button>
         ) : null}
@@ -322,123 +327,13 @@ export function AdminWorkspace() {
           elevation={toast.tone === "danger" ? "gold" : "soft"}
           radius="card"
           className={`px-4 py-3 ${
-            toast.tone === "danger" ? "bg-accent-subtle font-medium text-accent-hover" : "text-content"
+            toast.tone === "danger" ? "font-medium text-content" : "text-content"
           }`}
           role="status"
           aria-live="polite"
         >
           {toast.text}
         </Surface>
-      ) : null}
-
-      {loadState === "loading" ? (
-        <Surface elevation="soft" radius="card" className="px-5 py-10 text-content-muted" role="status">
-          {copy.admin.loading}
-        </Surface>
-      ) : null}
-
-      {loadState === "error" ? (
-        <Alert
-          tone="danger"
-          title={copy.admin.loadErrorTitle}
-          body={loadError ?? copy.admin.loadErrorBody}
-          action={
-            <Button variant="secondary" onClick={() => void reload()}>
-              {copy.admin.retryLoad}
-            </Button>
-          }
-        />
-      ) : null}
-
-      {loadState === "ready" && view === "first" ? (
-        <EmptyState
-          title={copy.admin.emptyFirstTitle}
-          body={copy.admin.emptyFirstBody}
-          action={
-            <Button onClick={() => fileInputRef.current?.click()}>
-              {copy.admin.emptyAction}
-            </Button>
-          }
-        />
-      ) : null}
-
-      {loadState === "ready" && view === "cleared" ? (
-        <EmptyState
-          title={copy.admin.emptyClearedTitle}
-          body={copy.admin.emptyClearedBody}
-          action={
-            <Button onClick={() => fileInputRef.current?.click()}>
-              {copy.admin.emptyAction}
-            </Button>
-          }
-        />
-      ) : null}
-
-      {loadState === "ready" && view === "emptyFilter" ? (
-        <EmptyState
-          title={interpolate(copy.admin.emptyFilterTitle, { label: labelOf(filter) })}
-          body={copy.admin.emptyFilterBody}
-          action={
-            <Button variant="secondary" onClick={() => setFilter(ALL_CATEGORIES)}>
-              {copy.admin.emptyFilterAction}
-            </Button>
-          }
-        />
-      ) : null}
-
-      {loadState === "ready" && view === "ready" ? (
-        <ul className="flex flex-col gap-3" aria-label={copy.admin.tableLabel}>
-            {visibleDocuments.map((document) => (
-              <li key={document.id}>
-                <Surface elevation="raised" radius="card" className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex min-w-0 flex-col gap-2">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <p className="font-semibold">{document.titre}</p>
-                      <StatusBadge status={document.statut_indexation} />
-                    </div>
-                    {document.statut_indexation === "erreur" && document.message_erreur ? (
-                      <p className="text-sm text-content-muted">{document.message_erreur}</p>
-                    ) : null}
-                    <p className="text-sm text-content-muted">
-                      {labelOf(document.categorie)} ·{" "}
-                      {document.type_source === "url"
-                        ? copy.admin.sourceUrl
-                        : copy.admin.sourceFile}
-                    </p>
-                    {document.url_source ? (
-                      <a
-                        href={document.url_source}
-                        className="neo-link break-all text-sm"
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {document.url_source}
-                      </a>
-                    ) : null}
-                    <p className="text-sm text-content-muted">
-                      {formatDateTime(document.date_ajout)}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 sm:shrink-0 sm:flex-col sm:items-stretch">
-                    {document.statut_indexation === "erreur" ? (
-                      <Button
-                        variant="secondary"
-                        onClick={() => setPendingAction({ kind: "retry", document })}
-                      >
-                        {copy.admin.retryIndex}
-                      </Button>
-                    ) : null}
-                    <Button
-                      variant="danger"
-                      onClick={() => setPendingAction({ kind: "delete", document })}
-                    >
-                      {copy.admin.delete}
-                    </Button>
-                  </div>
-                </Surface>
-              </li>
-            ))}
-          </ul>
       ) : null}
 
       <Surface as="section" elevation="raised" radius="card" className="flex flex-col gap-5 p-5">
@@ -492,7 +387,9 @@ export function AdminWorkspace() {
               if (categoryError) setCategoryError(undefined);
             }}
           />
-          <Button type="submit">{copy.admin.categoryAdd}</Button>
+          <Button type="submit" tooltip={copy.admin.tipAddCategory}>
+            {copy.admin.categoryAdd}
+          </Button>
         </form>
       </Surface>
 
@@ -518,13 +415,15 @@ export function AdminWorkspace() {
           >
             <p>
               {copy.admin.uploadDrop}{" "}
-              <button
-                type="button"
-                className="neo-link"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {copy.admin.uploadBrowse}
-              </button>
+              <Tooltip label={copy.admin.tipBrowseFile}>
+                <button
+                  type="button"
+                  className="neo-link"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {copy.admin.uploadBrowse}
+                </button>
+              </Tooltip>
             </p>
             <input
               ref={fileInputRef}
@@ -558,12 +457,128 @@ export function AdminWorkspace() {
               error={urlError}
               onChange={(event) => setUrl(event.target.value)}
             />
-            <Button type="submit" pending={urlPending}>
+            <Button type="submit" pending={urlPending} tooltip={copy.admin.tipIndexUrl}>
               {urlPending ? copy.admin.urlSubmitting : copy.admin.urlSubmit}
             </Button>
           </form>
         </Surface>
       </div>
+
+      {loadState === "loading" ? (
+        <Surface elevation="soft" radius="card" className="px-5 py-10 text-content-muted" role="status">
+          {copy.admin.loading}
+        </Surface>
+      ) : null}
+
+      {loadState === "error" ? (
+        <Alert
+          tone="danger"
+          title={copy.admin.loadErrorTitle}
+          body={loadError ?? copy.admin.loadErrorBody}
+          action={
+            <Button variant="secondary" tooltip={copy.admin.tipRetryLoad} onClick={() => void reload()}>
+              {copy.admin.retryLoad}
+            </Button>
+          }
+        />
+      ) : null}
+
+      {loadState === "ready" && view === "first" ? (
+        <EmptyState
+          title={copy.admin.emptyFirstTitle}
+          body={copy.admin.emptyFirstBody}
+          action={
+            <Button tooltip={copy.admin.tipAddFile} onClick={() => fileInputRef.current?.click()}>
+              {copy.admin.emptyAction}
+            </Button>
+          }
+        />
+      ) : null}
+
+      {loadState === "ready" && view === "cleared" ? (
+        <EmptyState
+          title={copy.admin.emptyClearedTitle}
+          body={copy.admin.emptyClearedBody}
+          action={
+            <Button tooltip={copy.admin.tipAddFile} onClick={() => fileInputRef.current?.click()}>
+              {copy.admin.emptyAction}
+            </Button>
+          }
+        />
+      ) : null}
+
+      {loadState === "ready" && view === "emptyFilter" ? (
+        <EmptyState
+          title={interpolate(copy.admin.emptyFilterTitle, { label: labelOf(filter) })}
+          body={copy.admin.emptyFilterBody}
+          action={
+            <Button
+              variant="secondary"
+              tooltip={copy.admin.tipShowAllCategories}
+              onClick={() => setFilter(ALL_CATEGORIES)}
+            >
+              {copy.admin.emptyFilterAction}
+            </Button>
+          }
+        />
+      ) : null}
+
+      {loadState === "ready" && view === "ready" ? (
+        <ul className="flex flex-col gap-3" aria-label={copy.admin.tableLabel}>
+            {visibleDocuments.map((document) => (
+              <li key={document.id}>
+                <Surface elevation="raised" radius="card" className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="font-semibold">{document.titre}</p>
+                      <StatusBadge status={document.statut_indexation} />
+                    </div>
+                    {document.statut_indexation === "erreur" && document.message_erreur ? (
+                      <p className="text-sm text-content-muted">{document.message_erreur}</p>
+                    ) : null}
+                    <p className="text-sm text-content-muted">
+                      {labelOf(document.categorie)} ·{" "}
+                      {document.type_source === "url"
+                        ? copy.admin.sourceUrl
+                        : copy.admin.sourceFile}
+                    </p>
+                    {document.url_source ? (
+                      <a
+                        href={document.url_source}
+                        className="neo-link break-all text-sm"
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {document.url_source}
+                      </a>
+                    ) : null}
+                    <p className="text-sm text-content-muted">
+                      {formatDateTime(document.date_ajout)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 sm:shrink-0 sm:flex-col sm:items-stretch">
+                    {document.statut_indexation === "erreur" ? (
+                      <Button
+                        variant="secondary"
+                        tooltip={copy.admin.tipRetryIndex}
+                        onClick={() => setPendingAction({ kind: "retry", document })}
+                      >
+                        {copy.admin.retryIndex}
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="danger"
+                      tooltip={copy.admin.tipDeleteDocument}
+                      onClick={() => setPendingAction({ kind: "delete", document })}
+                    >
+                      {copy.admin.delete}
+                    </Button>
+                  </div>
+                </Surface>
+              </li>
+            ))}
+          </ul>
+      ) : null}
 
       <ConfirmDialog
         open={Boolean(pendingAction && confirmCopy)}

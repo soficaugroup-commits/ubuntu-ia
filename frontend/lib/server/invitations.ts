@@ -7,7 +7,10 @@ import {
   INVITE_TTL_MS,
 } from "@/lib/server/invitation-token";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
+import { listPeople } from "@/lib/server/users";
 import type { UserRole } from "@/lib/types";
+
+export { listPeople };
 
 export type InvitationRow = {
   id: string;
@@ -37,15 +40,6 @@ export async function listInvitations(): Promise<InvitationRow[]> {
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as InvitationRow[];
-}
-
-export async function listPeople() {
-  const { data, error } = await supabaseAdmin()
-    .from("users")
-    .select("id, email, role, prenom, nom")
-    .order("email");
-  if (error) throw new Error(error.message);
-  return data ?? [];
 }
 
 async function allowedDomains(): Promise<string[]> {

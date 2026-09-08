@@ -21,12 +21,13 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: copy.meta.title,
   description: copy.meta.description,
+  applicationName: copy.product.name,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="fr" className={`${poppins.variable} h-full antialiased`}>
-      <body className="min-h-full font-sans">
+      <body className="h-full font-sans">
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>

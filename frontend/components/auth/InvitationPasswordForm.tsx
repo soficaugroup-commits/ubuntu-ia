@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Surface } from "@/components/ui/Surface";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { TextField } from "@/components/ui/TextField";
 import { copy } from "@/content/fr";
 import { interpolate } from "@/lib/format";
@@ -125,12 +126,16 @@ export function InvitationPasswordForm({ token }: { token: string }) {
           title={title}
           body={body}
           action={
-            <Link
-              href="/connexion"
-              className="neo-bubble inline-flex min-h-11 items-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-inverse"
+            <Tooltip
+              label={state === "used" ? copy.invite.tipUsedAction : copy.invite.tipBackAction}
             >
-              {state === "used" ? copy.invite.usedAction : copy.invite.backAction}
-            </Link>
+              <Link
+                href="/connexion"
+                className="neo-bubble inline-flex min-h-11 items-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-inverse"
+              >
+                {state === "used" ? copy.invite.usedAction : copy.invite.backAction}
+              </Link>
+            </Tooltip>
           }
         />
       </main>
@@ -176,7 +181,7 @@ export function InvitationPasswordForm({ token }: { token: string }) {
           {formError ? (
             <Alert title={formError} tone="danger" live="assertive" />
           ) : null}
-          <Button type="submit" pending={pending}>
+          <Button type="submit" pending={pending} tooltip={copy.invite.tipSubmit}>
             {pending ? copy.invite.submitting : copy.invite.submit}
           </Button>
         </form>

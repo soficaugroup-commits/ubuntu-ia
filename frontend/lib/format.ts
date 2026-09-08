@@ -8,8 +8,11 @@ export function formatDateTime(iso: string): string {
 }
 
 export function interpolate(
-  template: string,
+  template: string | null | undefined,
   values: Record<string, string>,
 ): string {
-  return template.replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? "");
+  return String(template ?? "").replace(
+    /\{(\w+)\}/g,
+    (_, key: string) => values[key] ?? "",
+  );
 }

@@ -344,6 +344,53 @@ async function describeImage(buffer: Buffer, mime: string): Promise<string> {
   return text;
 }
 
+export async function analyzeVisualAttachment(
+  buffer: Buffer,
+  mime: string,
+  question: string,
+): Promise<string> {
+  const endpoint = resolveLlmEndpoint();
+  const encoded = buffer.toString("base64");
+  const response = await fetch(chatCompletionsUrl(endpoint), {
+    method: "POST",
+    headers: openRouterHeaders(endpoint.key),
+    body: JSON.stringify({
+      model: visionModel(),
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text:
+                "Analyse cette image pour répondre à l'utilisateur. " +
+                "Décris le contenu utile : texte, chiffres, schémas, objets, contexte. " +
+                "Si l'image sert de modèle de style, extrais aussi la charte : couleurs hex exactes " +
+                "(primaire, accent, fond, texte), polices perçues, logo, style des tableaux. " +
+                "Si une couleur n'est pas lisible, dis-le plutôt que d'inventer. " +
+                "N'invente aucun chiffre absent. Réponds dans la langue de la question. " +
+                `Question : ${question.trim() || "Que montre cette image ?"}`,
+            },
+            {
+              type: "image_url",
+              image_url: { url: `data:${mime};base64,${encoded}` },
+            },
+          ],
+        },
+      ],
+    }),
+    signal: AbortSignal.timeout(25_000),
+  });
+  if (!response.ok) {
+    return describeImage(buffer, mime);
+  }
+  const body = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const text = body.choices?.[0]?.message?.content?.trim() ?? "";
+  return text || describeImage(buffer, mime);
+}
+
 function htmlToText(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")

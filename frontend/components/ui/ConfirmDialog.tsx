@@ -33,11 +33,17 @@ export function ConfirmDialog({
     <Dialog open={open} title={title} onClose={onClose}>
       <p className="text-content-muted">{body}</p>
       <div className="mt-5 flex flex-wrap justify-end gap-2">
-        <Button variant="secondary" onClick={onClose} disabled={pending}>
+        <Button
+          variant="secondary"
+          tooltip={copy.tips.cancel}
+          onClick={onClose}
+          disabled={pending}
+        >
           {cancelLabel}
         </Button>
         <Button
           variant={danger ? "danger" : "primary"}
+          tooltip={copy.tips.confirm}
           pending={pending}
           onClick={onConfirm}
         >

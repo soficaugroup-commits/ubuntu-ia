@@ -1,15 +1,17 @@
 import { supabaseForRequest } from "@/lib/server/supabase-admin";
 import type { UserRole } from "@/lib/types";
 
-export type AdminActor = {
+export type SessionActor = {
   id: string;
   email: string;
   role: UserRole;
 };
 
-export async function requireAdmin(
+export type AdminActor = SessionActor;
+
+export async function requireUser(
   request: Request,
-): Promise<AdminActor | { error: string; status: number }> {
+): Promise<SessionActor | { error: string; status: number }> {
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) {
@@ -33,13 +35,17 @@ export async function requireAdmin(
 
   const profile = await admin
     .from("users")
-    .select("id, email, role")
+    .select("id, email, role, statut")
     .eq("id", data.user.id)
     .maybeSingle();
 
-  if (!profile.data || profile.data.role !== "administrateur") {
+  const role = profile.data?.role;
+  if (!profile.data || (role !== "administrateur" && role !== "utilisateur")) {
+    return { error: "Session expirée. Reconnectez-vous.", status: 401 };
+  }
+  if (profile.data.statut === "suspendu") {
     return {
-      error: "Seuls les administrateurs peuvent gérer les accès.",
+      error: "Ce compte est suspendu. Contactez un administrateur.",
       status: 403,
     };
   }
@@ -47,12 +53,32 @@ export async function requireAdmin(
   return {
     id: profile.data.id,
     email: profile.data.email,
-    role: "administrateur",
+    role,
   };
+}
+
+export async function requireAdmin(
+  request: Request,
+): Promise<AdminActor | { error: string; status: number }> {
+  const actor = await requireUser(request);
+  if (!isSessionActor(actor)) return actor;
+  if (actor.role !== "administrateur") {
+    return {
+      error: "Seuls les administrateurs peuvent gérer les accès.",
+      status: 403,
+    };
+  }
+  return actor;
+}
+
+export function isSessionActor(
+  value: SessionActor | { error: string; status: number },
+): value is SessionActor {
+  return "id" in value && !("error" in value);
 }
 
 export function isAdminActor(
   value: AdminActor | { error: string; status: number },
 ): value is AdminActor {
-  return "id" in value && !("error" in value);
+  return isSessionActor(value);
 }

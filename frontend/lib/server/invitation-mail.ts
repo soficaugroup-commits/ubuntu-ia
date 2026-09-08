@@ -13,11 +13,12 @@ export async function sendInvitationEmail(
   payload: InviteMail,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const key = resendApiKey();
-  const from = resendFromEmail();
-  if (!key || !from) {
+  const fromRaw = resendFromEmail();
+  if (!key || !fromRaw) {
     return { ok: false, message: "L'envoi d'e-mail n'est pas configuré (Resend)." };
   }
 
+  const from = normalizeFrom(fromRaw);
   const resend = new Resend(key);
   const name = `${payload.prenom} ${payload.nom}`.trim();
   const { error } = await resend.emails.send({
@@ -69,9 +70,33 @@ export async function sendInvitationEmail(
   });
 
   if (error) {
+    console.error("[invite] resend", error);
+    const detail = typeof error.message === "string" ? error.message.trim() : "";
+    if (/domain|verified|not allowed|from/i.test(detail)) {
+      return {
+        ok: false,
+        message:
+          "L'adresse d'expéditeur n'est pas autorisée. Vérifiez le domaine dans Resend (Domains), puis RESEND_FROM_EMAIL sur Netlify.",
+      };
+    }
+    if (/api.?key|unauthorized|invalid/i.test(detail)) {
+      return {
+        ok: false,
+        message: "La clé Resend est refusée. Vérifiez RESEND_API_KEY sur Netlify.",
+      };
+    }
     return { ok: false, message: "L'e-mail d'invitation n'a pas pu être envoyé." };
   }
   return { ok: true };
+}
+
+function normalizeFrom(value: string): string {
+  const trimmed = value.trim();
+  if (/<[^>]+>/.test(trimmed)) return trimmed;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return `Ubuntu IA <${trimmed}>`;
+  }
+  return trimmed;
 }
 
 function escapeHtml(value: string): string {

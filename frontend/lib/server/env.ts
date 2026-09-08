@@ -47,10 +47,13 @@ export function supabaseServiceKey(): string {
 }
 
 export function resendApiKey(): string {
+  // Référence statique : Next/Netlify n'expose pas toujours process.env[name] dynamique.
+  void process.env.RESEND_API_KEY;
   return liveEnv("RESEND_API_KEY");
 }
 
 export function resendFromEmail(): string {
+  void process.env.RESEND_FROM_EMAIL;
   return liveEnv("RESEND_FROM_EMAIL");
 }
 
@@ -251,8 +254,16 @@ export function assertServerSecrets(): string | null {
   if (supabase) {
     return "Le service d'invitation n'est pas configuré (Supabase).";
   }
-  if (!resendApiKey() || !resendFromEmail()) {
-    return "L'envoi d'e-mail n'est pas configuré (Resend).";
+  const key = resendApiKey();
+  const from = resendFromEmail();
+  if (!key && !from) {
+    return "L'envoi d'e-mail n'est pas configuré (RESEND_API_KEY et RESEND_FROM_EMAIL manquants sur Netlify).";
+  }
+  if (!key) {
+    return "L'envoi d'e-mail n'est pas configuré (RESEND_API_KEY manquante sur Netlify).";
+  }
+  if (!from) {
+    return "L'envoi d'e-mail n'est pas configuré (RESEND_FROM_EMAIL manquante sur Netlify).";
   }
   return null;
 }

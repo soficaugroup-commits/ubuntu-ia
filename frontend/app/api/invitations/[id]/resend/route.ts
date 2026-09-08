@@ -3,6 +3,10 @@ import { assertServerSecrets } from "@/lib/server/env";
 import { resendInvitation } from "@/lib/server/invitations";
 import { isAdminActor, requireAdmin } from "@/lib/server/require-admin";
 
+void process.env.RESEND_API_KEY;
+void process.env.RESEND_FROM_EMAIL;
+void process.env.NEXT_PUBLIC_APP_URL;
+
 type Context = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, context: Context) {

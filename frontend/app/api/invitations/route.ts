@@ -8,6 +8,10 @@ import {
 import { isAdminActor, requireAdmin } from "@/lib/server/require-admin";
 import type { UserRole } from "@/lib/types";
 
+void process.env.RESEND_API_KEY;
+void process.env.RESEND_FROM_EMAIL;
+void process.env.NEXT_PUBLIC_APP_URL;
+
 export async function GET(request: Request) {
   const actor = await requireAdmin(request);
   if (!isAdminActor(actor)) {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { SoficauMark } from "@/components/brand/SoficauMark";
@@ -85,6 +86,15 @@ export function LoginForm() {
             error={passwordError}
             onChange={(event) => setPassword(event.target.value)}
           />
+          <p className="-mt-2 text-right text-sm">
+            <Link
+              href="/mot-de-passe-oublie"
+              className="font-semibold text-content underline-offset-2 hover:underline"
+              title={copy.auth.tipForgot}
+            >
+              {copy.auth.forgotLink}
+            </Link>
+          </p>
           {formError ? (
             <Alert title={formError} body="" tone="danger" live="assertive" />
           ) : null}

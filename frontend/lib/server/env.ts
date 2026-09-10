@@ -66,6 +66,8 @@ function llmRuntimeVars() {
   void process.env.OPENAI_BASE_URL;
   void process.env.UBUNTU_OPENROUTER_API_KEY;
     void process.env.CHAT_MODEL;
+    void process.env.FILE_MODEL;
+    void process.env.DOCUMENT_MODEL;
     void process.env.IMAGE_MODEL;
     void process.env.VISION_MODEL;
     void process.env.REALTIME_MODEL;
@@ -189,6 +191,20 @@ export function chatModel(endpoint: LlmEndpoint): string {
     isOfficialOpenRouterBase(endpoint.baseUrl) ||
     endpoint.baseUrl.includes("openrouter");
   return official ? "openai/gpt-6-astra" : "gpt-6-astra";
+}
+
+/**
+ * Modèle dédié à la rédaction / mise en forme / design des livrables
+ * (Word, Excel, PowerPoint, PDF, canevas documentaire).
+ * Défaut : Claude Opus 5 via OpenRouter + skills Anthropic.
+ */
+export function fileModel(endpoint: LlmEndpoint): string {
+  const configured = liveEnv("FILE_MODEL") || liveEnv("DOCUMENT_MODEL");
+  if (configured) return configured;
+  const official =
+    isOfficialOpenRouterBase(endpoint.baseUrl) ||
+    endpoint.baseUrl.includes("openrouter");
+  return official ? "anthropic/claude-opus-5" : "claude-opus-5";
 }
 
 export function imageModel(endpoint: LlmEndpoint): string {

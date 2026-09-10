@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Sheet } from "@/components/ui/Sheet";
 import { Surface } from "@/components/ui/Surface";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { IconHistory, IconMemory, IconTrash } from "@/components/ui/icons";
+import { IconHistory, IconMemory, IconPencil, IconTrash } from "@/components/ui/icons";
 import { copy } from "@/content/fr";
 import {
   compactTools,
@@ -25,7 +25,12 @@ import {
   createUserMessage,
   titleFromQuestion,
 } from "@/lib/chat";
-import { streamAnswer, deleteConversation, loadConversations } from "@/lib/chat-api";
+import {
+  streamAnswer,
+  deleteConversation,
+  loadConversations,
+  renameConversation,
+} from "@/lib/chat-api";
 import { interpolate } from "@/lib/format";
 import { loadOwnFeedback } from "@/lib/feedback-api";
 import { loadMemory } from "@/lib/memory-api";
@@ -40,6 +45,8 @@ import type {
   MessageFeedback,
 } from "@/lib/types";
 import type { ChatStreamEvent } from "@/lib/chat-stream-events";
+import { Dialog } from "@/components/ui/Dialog";
+import { TextField } from "@/components/ui/TextField";
 
 function createConversation(): Conversation {
   return {
@@ -199,6 +206,40 @@ export function ChatWorkspace() {
     return { ok: true };
   }
 
+  async function renameActiveConversation(
+    id: string,
+    title: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    const target = conversations.find((item) => item.id === id);
+    if (!target) {
+      return { ok: false, error: copy.chat.renameConversationError };
+    }
+    const cleaned = title.trim().replace(/\s+/g, " ");
+    if (!cleaned) {
+      return { ok: false, error: copy.chat.renameConversationEmpty };
+    }
+    if (target.messages.length === 0) {
+      setConversations((current) =>
+        current.map((item) =>
+          item.id === id
+            ? { ...item, title: cleaned.slice(0, 80), titleLocked: true }
+            : item,
+        ),
+      );
+      return { ok: true };
+    }
+    const result = await renameConversation(id, cleaned);
+    if (!result.ok) return result;
+    setConversations((current) =>
+      current.map((item) =>
+        item.id === id
+          ? { ...item, title: result.title, titleLocked: result.titleLocked }
+          : item,
+      ),
+    );
+    return { ok: true };
+  }
+
   function replaceAssistant(assistantId: string, next: ChatMessage) {
     updateActive((conversation) => ({
       ...conversation,
@@ -230,7 +271,7 @@ export function ChatWorkspace() {
       return {
         ...conversation,
         title:
-          conversation.messages.length === 0 && spokenUser
+          conversation.messages.length === 0 && spokenUser && !conversation.titleLocked
             ? titleFromQuestion(spokenUser)
             : conversation.title,
         updatedAt: now,
@@ -278,7 +319,10 @@ export function ChatWorkspace() {
         };
         return {
           ...conversation,
-          title: index === 0 ? titleFromQuestion(question) : conversation.title,
+          title:
+            index === 0 && !conversation.titleLocked
+              ? titleFromQuestion(question)
+              : conversation.title,
           updatedAt: new Date().toISOString(),
           messages: [...conversation.messages.slice(0, index), updatedUser, pending],
         };
@@ -288,7 +332,7 @@ export function ChatWorkspace() {
       updateActive((conversation) => ({
         ...conversation,
         title:
-          conversation.messages.length === 0
+          conversation.messages.length === 0 && !conversation.titleLocked
             ? titleFromQuestion(question)
             : conversation.title,
         updatedAt: new Date().toISOString(),
@@ -510,6 +554,7 @@ export function ChatWorkspace() {
       }}
       onCreate={startConversation}
       onMemory={() => void openMemory()}
+      onRename={(id, title) => renameActiveConversation(id, title)}
       onDelete={(id) => removeConversation(id)}
     />
   );
@@ -674,6 +719,7 @@ function ConversationHistory({
   onSelect,
   onCreate,
   onMemory,
+  onRename,
   onDelete,
 }: {
   conversations: Conversation[];
@@ -681,12 +727,21 @@ function ConversationHistory({
   onSelect: (id: string) => void;
   onCreate: () => void;
   onMemory: () => void;
+  onRename: (
+    id: string,
+    title: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   onDelete: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const target = conversations.find((item) => item.id === pendingId) ?? null;
+  const renamingTarget = conversations.find((item) => item.id === renamingId) ?? null;
 
   async function confirmDelete() {
     if (!target) return;
@@ -699,6 +754,19 @@ function ConversationHistory({
       return;
     }
     setPendingId(null);
+  }
+
+  async function confirmRename() {
+    if (!renamingTarget) return;
+    setRenaming(true);
+    setRenameError(null);
+    const result = await onRename(renamingTarget.id, renameValue);
+    setRenaming(false);
+    if (!result.ok) {
+      setRenameError(result.error);
+      return;
+    }
+    setRenamingId(null);
   }
 
   return (
@@ -738,6 +806,19 @@ function ConversationHistory({
                 <Button
                   variant="ghost"
                   size="icon"
+                  aria-label={copy.chat.renameConversation}
+                  tooltip={copy.chat.tipRenameConversation}
+                  onClick={() => {
+                    setRenamingId(item.id);
+                    setRenameValue(item.title === copy.chat.untitled ? "" : item.title);
+                    setRenameError(null);
+                  }}
+                >
+                  <IconPencil />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   aria-label={copy.chat.deleteConversation}
                   tooltip={copy.chat.tipDeleteConversation}
                   onClick={() => setPendingId(item.id)}
@@ -759,6 +840,48 @@ function ConversationHistory({
           {copy.chat.memoryOpen}
         </Button>
       </div>
+      {renamingTarget ? (
+        <Dialog
+          open
+          title={copy.chat.renameConversationTitle}
+          onClose={() => {
+            if (!renaming) setRenamingId(null);
+          }}
+        >
+          <form
+            className="mt-4 flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void confirmRename();
+            }}
+          >
+            <TextField
+              id="rename-conversation"
+              label={copy.chat.renameConversationLabel}
+              hint={copy.chat.renameConversationHint}
+              value={renameValue}
+              error={renameError ?? undefined}
+              onChange={(event) => setRenameValue(event.target.value)}
+              autoComplete="off"
+            />
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={renaming}
+                onClick={() => setRenamingId(null)}
+              >
+                {copy.admin.confirm.cancel}
+              </Button>
+              <Button type="submit" pending={renaming}>
+                {renaming
+                  ? copy.chat.renameConversationPending
+                  : copy.chat.renameConversationConfirm}
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      ) : null}
       {target ? (
         <ConfirmDialog
           open

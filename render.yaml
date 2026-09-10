@@ -1,0 +1,71 @@
+# Ubuntu IA — Blueprint Render
+# https://render.com/docs/blueprint-spec
+#
+# Deux services dans le même projet :
+#   1. ubuntu-ia-web     → Next.js (frontend/)
+#   2. ubuntu-ia-office  → worker Python + LibreOffice
+#
+# Après le premier deploy : renseigner les env vars (sync: false) dans le dashboard,
+# pointer le domaine ubuntu-ia.com vers le Web Service, puis appliquer
+# backend/db/013_office_jobs.sql sur Supabase.
+
+services:
+  - type: web
+    name: ubuntu-ia-web
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_APP_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: CHAT_MODEL
+        value: openai/gpt-6-astra
+      - key: FILE_MODEL
+        value: anthropic/claude-opus-5
+      - key: OFFICE_WORKER_URL
+        sync: false
+      - key: OFFICE_WORKER_SECRET
+        sync: false
+
+  - type: worker
+    name: ubuntu-ia-office
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./backend/office_worker/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: OFFICE_WORKER_SECRET
+        sync: false
+      - key: OFFICE_POLL_SECONDS
+        value: "5"
+      - key: OFFICE_JOB_TIMEOUT_SECONDS
+        value: "300"
+      - key: OFFICE_MAX_FILE_BYTES
+        value: "26214400"

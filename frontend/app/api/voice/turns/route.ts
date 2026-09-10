@@ -79,7 +79,10 @@ export async function POST(request: Request) {
     const messages = [...prior, ...added];
     const conversation: Conversation = {
       id: conversationId,
-      title: existing?.title || titleFromQuestion(userContent || assistantContent),
+      title: existing?.titleLocked
+        ? existing.title
+        : existing?.title || titleFromQuestion(userContent || assistantContent),
+      titleLocked: existing?.titleLocked,
       updatedAt: now,
       messages,
     };

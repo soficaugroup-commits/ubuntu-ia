@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { streamAnswerQuestion } from "@/lib/server/answer-question";
-import { saveUserConversation } from "@/lib/server/conversations";
+import {
+  getUserConversation,
+  saveUserConversation,
+} from "@/lib/server/conversations";
 import { assertDocumentSecrets } from "@/lib/server/env";
 import {
   immediateFactsFromQuestion,
@@ -26,6 +29,8 @@ void process.env.NETLIFY_AI_GATEWAY_BASE_URL;
 void process.env.OPENAI_API_KEY;
 void process.env.OPENAI_BASE_URL;
 void process.env.CHAT_MODEL;
+void process.env.FILE_MODEL;
+void process.env.DOCUMENT_MODEL;
 void process.env.IMAGE_MODEL;
 void process.env.VISION_MODEL;
 
@@ -185,17 +190,24 @@ export async function POST(request: Request) {
           status,
           createdAt: new Date().toISOString(),
         };
+        const existing = await getUserConversation(actor.id, conversationId).catch(
+          () => null,
+        );
+        const messages = mergeTurn(
+          body.messages ?? [],
+          question,
+          body.attachments,
+          body.tools,
+          assistant,
+        );
         const conversation: Conversation = {
           id: conversationId,
-          title: titleFromQuestion(question),
+          title: existing?.titleLocked
+            ? existing.title
+            : titleFromMessages(messages) || titleFromQuestion(question),
+          titleLocked: existing?.titleLocked,
           updatedAt: assistant.createdAt,
-          messages: mergeTurn(
-            body.messages ?? [],
-            question,
-            body.attachments,
-            body.tools,
-            assistant,
-          ),
+          messages,
         };
         try {
           await saveUserConversation(actor.id, conversation);
@@ -241,6 +253,11 @@ function lastUserMessageIndex(messages: ChatMessage[], question: string): number
 function titleFromQuestion(question: string): string {
   const compact = question.trim().replace(/\s+/g, " ");
   return compact.length > 48 ? `${compact.slice(0, 45)}…` : compact;
+}
+
+function titleFromMessages(messages: ChatMessage[]): string {
+  const first = messages.find((item) => item.role === "user");
+  return first ? titleFromQuestion(first.content) : "";
 }
 
 function mergeTurn(

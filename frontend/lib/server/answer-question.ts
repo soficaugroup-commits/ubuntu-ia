@@ -1,5 +1,7 @@
 import "server-only";
 import { prepareChatAttachments, type PreparedAttachment } from "@/lib/server/chat-attachments";
+import { planAgentTurn } from "@/lib/server/agent-plan";
+import { runAgentToolRound } from "@/lib/server/agent-tools";
 import { isStyleTransfer, pickStyleAttachment } from "@/lib/server/design-dna";
 import {
   hasWebAccess,
@@ -11,8 +13,9 @@ import {
   WEB_PLUGIN,
   WEB_TOOLS,
 } from "@/lib/server/deep-research";
-import { chatModel, resolveLlmEndpoint } from "@/lib/server/env";
+import { chatModel, fileModel, resolveLlmEndpoint } from "@/lib/server/env";
 import { embedTexts } from "@/lib/server/embed-texts";
+import { loadDocumentSkillPrompt } from "@/lib/server/document-skills";
 import { generateChatFiles } from "@/lib/server/generate-chat-file";
 import { generateChatImage } from "@/lib/server/generate-image";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
@@ -123,19 +126,31 @@ export async function* streamAnswerQuestion(
   const steps = copy.chat;
   const prior = priorTurns(question, history);
   const query = searchQuery(question, prior);
+  const plan = planAgentTurn(question, tools, attachments);
+
+  yield step("plan", steps.stepsPlan, "running");
+  yield step("plan", plan.label || steps.stepsPlanDone, "done");
 
   if (attachments.length) {
     yield step("attachments", steps.stepsAttachments, "running");
   }
-  yield step("search", steps.stepsSearch, "running");
-  yield step("web", steps.stepsWeb, "queued");
+  if (plan.needRag) {
+    yield step("search", steps.stepsSearch, "running");
+  } else {
+    yield step("search", steps.stepsSearchSkip, "empty");
+  }
+  if (plan.needWeb) {
+    yield step("web", steps.stepsWeb, "queued");
+  }
   yield step("write", steps.stepsWrite, "queued");
 
-  const [selected, prepared, storedMemory] = await Promise.all([
-    retrieveIndexed(query).catch((error) => {
-      console.error("[chat] rag", error);
-      return [] as RetrievedChunk[];
-    }),
+  const [selectedRaw, prepared, storedMemory] = await Promise.all([
+    plan.needRag
+      ? retrieveIndexed(query).catch((error) => {
+          console.error("[chat] rag", error);
+          return [] as RetrievedChunk[];
+        })
+      : Promise.resolve([] as RetrievedChunk[]),
     prepareChatAttachments(attachments, question),
     memoryContext
       ? listUserMemory(memoryContext.userId).catch((error) => {
@@ -149,26 +164,75 @@ export async function* streamAnswerQuestion(
   if (attachments.length) {
     yield step("attachments", steps.stepsAttachmentsDone, "done");
   }
-  if (selected.length) {
-    yield step("search", steps.stepsSearchDone, "done");
-    yield step("analyze", steps.stepsAnalyze, "running");
-    yield step("analyze", steps.stepsAnalyzeDone, "done");
-  } else {
-    yield step("search", steps.stepsSearchEmpty, "empty");
+  let selected = selectedRaw;
+  if (plan.needRag) {
+    if (selected.length) {
+      yield step("search", steps.stepsSearchDone, "done");
+      yield step("analyze", steps.stepsAnalyze, "running");
+      yield step("analyze", steps.stepsAnalyzeDone, "done");
+    } else {
+      yield step("search", steps.stepsSearchEmpty, "empty");
+    }
   }
 
-  yield step("web", steps.stepsWeb, "running");
+  let formats = plan.formats.length
+    ? [...plan.formats]
+    : requestedFormats(
+        question,
+        tools,
+        prepared.map((item) => item.name),
+      );
+  let imageWanted =
+    plan.needImage || requestImage(question, tools, attachments);
+  let canvasWanted = plan.needCanvas || requestCanvas(question, tools);
+  let fileWanted =
+    plan.needFile ||
+    requestFile(question, tools, prepared.length) ||
+    formats.length > 0;
+
+  if (plan.needTools) {
+    yield step("tools", steps.stepsTools, "running");
+    const prep = await runAgentToolRound({
+      question,
+      history: prior,
+      mode: plan.mode,
+      seed: {
+        image: imageWanted,
+        canvas: canvasWanted,
+        file: fileWanted,
+        formats,
+        brief: "",
+      },
+      signal,
+    }).catch((error) => {
+      console.error("[chat] agent-tools", error);
+      return null;
+    });
+    throwIfAborted(signal);
+    if (prep) {
+      if (prep.chunks.length) {
+        selected = mergeChunks(selected, prep.chunks);
+        yield step("search", steps.stepsSearchDone, "done");
+      }
+      imageWanted = imageWanted || prep.deliverable.image;
+      canvasWanted = canvasWanted || prep.deliverable.canvas;
+      fileWanted = fileWanted || prep.deliverable.file;
+      for (const format of prep.deliverable.formats) {
+        if (!formats.includes(format)) formats.push(format);
+      }
+      if (fileWanted && !formats.length) formats = ["pdf"];
+      yield step("tools", steps.stepsToolsDone, "done");
+    } else {
+      yield step("tools", steps.stepsToolsDone, "empty");
+    }
+  }
+
+  if (plan.needWeb) {
+    yield step("web", steps.stepsWeb, "running");
+  }
 
   const spokenFacts = immediateFactsFromQuestion(question);
   const memory = mergeFacts(storedMemory, spokenFacts);
-  const imageWanted = requestImage(question, tools, attachments);
-  const canvasWanted = requestCanvas(question, tools);
-  const formats = requestedFormats(
-    question,
-    tools,
-    prepared.map((item) => item.name),
-  );
-  const fileWanted = requestFile(question, tools, prepared.length) || formats.length > 0;
 
   const imagePromise = imageWanted
     ? generateChatImage(
@@ -199,6 +263,8 @@ export async function* streamAnswerQuestion(
           file: fileWanted,
           formats,
           memory: formatMemoryForPrompt(memory),
+          agentMode: plan.mode,
+          useWeb: plan.needWeb,
         },
         (text) => {
           if (!writing) {
@@ -226,12 +292,14 @@ export async function* streamAnswerQuestion(
   yield step("write", steps.stepsWriteDone, "done");
   throwIfAborted(signal);
 
-  const webHit = completion.webSources.length > 0 || completion.webUsed;
-  yield step(
-    "web",
-    webHit ? steps.stepsWebDone : steps.stepsWebEmpty,
-    webHit ? "done" : "empty",
-  );
+  if (plan.needWeb) {
+    const webHit = completion.webSources.length > 0 || completion.webUsed;
+    yield step(
+      "web",
+      webHit ? steps.stepsWebDone : steps.stepsWebEmpty,
+      webHit ? "done" : "empty",
+    );
+  }
 
   const image = await imagePromise;
   if (imageWanted) {
@@ -423,55 +491,80 @@ async function completeAnswer(
     file: boolean;
     formats: FileFormat[];
     memory?: string;
+    agentMode?: "answer" | "task" | "hybrid";
+    useWeb?: boolean;
   },
   onToken: (text: string) => void,
   onActivity: (kind: "web_search" | "web_fetch") => void,
   signal?: AbortSignal,
 ): Promise<{ content: string; webSources: SourceCitation[]; webUsed: boolean }> {
   const textMessages = answerMessages(question, history, chunks, attachments, extras);
-  const models = uniqueModels(chatModel(resolveLlmEndpoint()));
-  const preferred = models[0];
+  const endpoint = resolveLlmEndpoint();
+  const documentWork = Boolean(extras.file || extras.canvas);
+  const preferred = documentWork ? fileModel(endpoint) : chatModel(endpoint);
+  const models = documentWork
+    ? uniqueModels(
+        preferred,
+        "anthropic/claude-opus-5",
+        "anthropic/claude-opus-4.5",
+        chatModel(endpoint),
+      )
+    : uniqueModels(preferred, "openai/gpt-6-astra", "gpt-6-astra");
   const reasoning = {
     effort: reasoningEffort(question, attachments.length),
     exclude: true,
   };
+  const useWeb = extras.useWeb !== false;
   const tries: {
     model: string;
     extra: Record<string, unknown>;
     timeoutMs: number;
-  }[] = [
-    {
-      model: preferred,
-      extra: {
-        tools: WEB_TOOLS,
-        max_tool_calls: 8,
-        reasoning,
-        max_completion_tokens: 16_000,
-        temperature: 0.4,
-      },
-      timeoutMs: WEB_ANSWER_MS,
-    },
-    {
-      model: preferred,
-      extra: {
-        plugins: [WEB_PLUGIN],
-        reasoning,
-        max_completion_tokens: 16_000,
-        temperature: 0.4,
-      },
-      timeoutMs: WEB_ANSWER_MS,
-    },
-    {
-      model: preferred,
-      extra: { reasoning, max_completion_tokens: 16_000, temperature: 0.4 },
-      timeoutMs: DOCS_ANSWER_MS,
-    },
-    ...models.slice(1).map((model) => ({
-      model,
-      extra: { max_completion_tokens: 8_000, temperature: 0.4 } as Record<string, unknown>,
-      timeoutMs: DOCS_ANSWER_MS,
-    })),
-  ];
+  }[] = useWeb
+    ? [
+        {
+          model: preferred,
+          extra: {
+            tools: WEB_TOOLS,
+            max_tool_calls: 8,
+            reasoning,
+            max_completion_tokens: 16_000,
+            temperature: 0.4,
+          },
+          timeoutMs: WEB_ANSWER_MS,
+        },
+        {
+          model: preferred,
+          extra: {
+            plugins: [WEB_PLUGIN],
+            reasoning,
+            max_completion_tokens: 16_000,
+            temperature: 0.4,
+          },
+          timeoutMs: WEB_ANSWER_MS,
+        },
+        {
+          model: preferred,
+          extra: { reasoning, max_completion_tokens: 16_000, temperature: 0.4 },
+          timeoutMs: DOCS_ANSWER_MS,
+        },
+        ...models.slice(1).map((model) => ({
+          model,
+          extra: { max_completion_tokens: 8_000, temperature: 0.4 } as Record<string, unknown>,
+          timeoutMs: DOCS_ANSWER_MS,
+        })),
+      ]
+    : [
+        {
+          model: preferred,
+          extra: { reasoning, max_completion_tokens: 16_000, temperature: 0.4 },
+          timeoutMs: DOCS_ANSWER_MS,
+        },
+        ...models.slice(1).map((model) => ({
+          model,
+          extra: { max_completion_tokens: 8_000, temperature: 0.4 } as Record<string, unknown>,
+          timeoutMs: DOCS_ANSWER_MS,
+        })),
+      ];
 
   for (const { model, extra, timeoutMs } of tries) {
     throwIfAborted(signal);
@@ -608,11 +701,17 @@ function answerMessages(
     file: boolean;
     formats: FileFormat[];
     memory?: string;
+    agentMode?: "answer" | "task" | "hybrid";
+    useWeb?: boolean;
   },
 ): ChatTurn[] {
   const internalCount = chunks.length;
   const context = formatInternal(chunks);
   const attached = formatAttachments(attachments, question);
+  const documentWork = Boolean(extras.file || extras.canvas);
+  const documentSkills = documentWork
+    ? loadDocumentSkillPrompt(extras.formats)
+    : undefined;
   const messages: ChatTurn[] = [
     {
       role: "system",
@@ -623,6 +722,8 @@ function answerMessages(
         file: extras.file,
         formats: extras.formats,
         memory: extras.memory,
+        agentMode: extras.agentMode,
+        documentSkills,
       }),
     },
   ];
@@ -635,7 +736,7 @@ function answerMessages(
     });
   }
 
-  const prompt = `${context}${attached}\n\nQuestion : ${question.trim()}`;
+  const prompt = `${context}${attached}\n\nDemande : ${question.trim()}`;
   const parts: Exclude<ChatTurn["content"], string> = [{ type: "text", text: prompt }];
   for (const item of attachments) {
     if (item.dataUrl) {
@@ -716,8 +817,26 @@ function imagePrompt(
   return `${base}\nContexte : ${hints}`;
 }
 
-function uniqueModels(preferred: string): string[] {
-  return [...new Set([preferred, "openai/gpt-6-astra", "gpt-6-astra"])];
+function uniqueModels(...models: string[]): string[] {
+  return [...new Set(models.filter(Boolean))];
+}
+
+function mergeChunks(
+  primary: RetrievedChunk[],
+  extra: RetrievedChunk[],
+): RetrievedChunk[] {
+  const seen = new Set(
+    primary.map((chunk) => `${chunk.document_id}:${excerpt(chunk.contenu)}`),
+  );
+  const merged = [...primary];
+  for (const chunk of extra) {
+    const key = `${chunk.document_id}:${excerpt(chunk.contenu)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(chunk);
+    if (merged.length >= 6) break;
+  }
+  return merged;
 }
 
 function selectChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {

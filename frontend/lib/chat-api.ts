@@ -53,6 +53,38 @@ export async function deleteConversation(id: string): Promise<
   return { ok: true };
 }
 
+export async function renameConversation(
+  id: string,
+  title: string,
+): Promise<
+  | { ok: true; title: string; titleLocked: boolean }
+  | { ok: false; error: string }
+> {
+  const response = await fetch(`/api/conversations/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(await authHeaders()),
+    },
+    body: JSON.stringify({ title }),
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    conversation?: { title?: string; titleLocked?: boolean };
+  };
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: body.error || "La conversation n'a pas pu être renommée.",
+    };
+  }
+  return {
+    ok: true,
+    title: body.conversation?.title || title.trim(),
+    titleLocked: Boolean(body.conversation?.titleLocked ?? true),
+  };
+}
+
 export async function streamAnswer(
   question: string,
   conversationId: string,

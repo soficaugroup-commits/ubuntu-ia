@@ -122,6 +122,8 @@ export type ChatMessage =
 export type Conversation = {
   id: string;
   title: string;
+  /** Titre figé par l'utilisateur (ne plus dériver du premier message). */
+  titleLocked?: boolean;
   updatedAt: string;
   messages: ChatMessage[];
 };

@@ -15,6 +15,8 @@ type ConversationRow = {
   id: string;
   date_creation: string;
   messages: unknown;
+  title: string | null;
+  title_locked: boolean | null;
 };
 
 export async function listUserConversations(
@@ -22,7 +24,7 @@ export async function listUserConversations(
 ): Promise<Conversation[]> {
   const { data, error } = await supabaseAdmin()
     .from("conversations")
-    .select("id, date_creation, messages")
+    .select("id, date_creation, messages, title, title_locked")
     .eq("user_id", userId)
     .order("date_creation", { ascending: false });
   if (error) {
@@ -50,13 +52,36 @@ export async function deleteUserConversation(
   return Boolean(data);
 }
 
+export async function renameUserConversation(
+  userId: string,
+  conversationId: string,
+  title: string,
+): Promise<Conversation | null> {
+  const cleaned = sanitizeTitle(title);
+  if (!cleaned) {
+    throw new Error("Indiquez un titre pour cette conversation.");
+  }
+  const { data, error } = await supabaseAdmin()
+    .from("conversations")
+    .update({ title: cleaned, title_locked: true })
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .select("id, date_creation, messages, title, title_locked")
+    .maybeSingle();
+  if (error) {
+    throw new Error("La conversation n'a pas pu être renommée.");
+  }
+  if (!data) return null;
+  return mapConversation(data as ConversationRow);
+}
+
 export async function getUserConversation(
   userId: string,
   conversationId: string,
 ): Promise<Conversation | null> {
   const { data, error } = await supabaseAdmin()
     .from("conversations")
-    .select("id, date_creation, messages")
+    .select("id, date_creation, messages, title, title_locked")
     .eq("id", conversationId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -73,16 +98,28 @@ export async function saveUserConversation(
 ): Promise<void> {
   const { data: existing } = await supabaseAdmin()
     .from("conversations")
-    .select("user_id")
+    .select("user_id, title, title_locked")
     .eq("id", conversation.id)
     .maybeSingle();
   if (existing && existing.user_id !== userId) {
     throw new Error("La conversation n'a pas pu être enregistrée.");
   }
+
+  const locked = Boolean(existing?.title_locked || conversation.titleLocked);
+  const autoTitle = titleFromStored(conversation.messages);
+  const title = locked
+    ? sanitizeTitle(conversation.title) ||
+      sanitizeTitle(String(existing?.title ?? "")) ||
+      autoTitle ||
+      "Nouvelle conversation"
+    : autoTitle || sanitizeTitle(conversation.title) || "Nouvelle conversation";
+
   const payload = {
     id: conversation.id,
     user_id: userId,
     messages: conversation.messages.map(serializeMessage),
+    title,
+    title_locked: locked,
   };
   const { error } = await supabaseAdmin()
     .from("conversations")
@@ -92,14 +129,25 @@ export async function saveUserConversation(
   }
 }
 
+export function sanitizeTitle(value: string): string {
+  const compact = value.trim().replace(/\s+/g, " ");
+  if (!compact) return "";
+  return compact.length > 80 ? `${compact.slice(0, 77)}…` : compact;
+}
+
 function mapConversation(row: ConversationRow): Conversation {
   const messages = Array.isArray(row.messages)
     ? row.messages.map(parseMessage).filter((item): item is ChatMessage => item !== null)
     : [];
   const last = messages.at(-1);
+  const locked = Boolean(row.title_locked);
+  const stored = sanitizeTitle(row.title ?? "");
   return {
     id: row.id,
-    title: titleFromStored(messages) || "Nouvelle conversation",
+    title: locked
+      ? stored || titleFromStored(messages) || "Nouvelle conversation"
+      : stored || titleFromStored(messages) || "Nouvelle conversation",
+    titleLocked: locked,
     updatedAt: last?.createdAt || row.date_creation,
     messages,
   };
@@ -108,8 +156,7 @@ function mapConversation(row: ConversationRow): Conversation {
 function titleFromStored(messages: ChatMessage[]): string {
   const first = messages.find((item) => item.role === "user");
   if (!first) return "";
-  const compact = first.content.trim().replace(/\s+/g, " ");
-  return compact.length > 48 ? `${compact.slice(0, 45)}…` : compact;
+  return sanitizeTitle(first.content);
 }
 
 function parseMessage(value: unknown): ChatMessage | null {
@@ -225,7 +272,7 @@ function asFileFormat(value: unknown): GeneratedFile["format"] {
     "jpeg",
     "webp",
   ];
-  return allowed.includes(value as FileFormat) ? (value as GeneratedFile["format"]) : "pdf";
+  return allowed.includes(value as FileFormat) ? (value as FileFormat) : "pdf";
 }
 
 function parseTools(value: unknown): ChatTools | undefined {

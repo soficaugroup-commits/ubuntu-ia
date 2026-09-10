@@ -1,30 +1,5 @@
 import "server-only";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { env as nodeEnv } from "node:process";
-
-let loadedDotEnv = false;
-
-function loadDotEnvFiles() {
-  if (loadedDotEnv) return;
-  loadedDotEnv = true;
-  const files = [
-    resolve(process.cwd(), ".env"),
-    resolve(process.cwd(), ".env.local"),
-    resolve(process.cwd(), "..", ".env"),
-    resolve(process.cwd(), "..", ".env.local"),
-  ];
-  for (const file of files) {
-    if (!existsSync(file)) continue;
-    for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
-      const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
-      if (!match) continue;
-      const [, name, raw] = match;
-      if (cleanEnv(nodeEnv[name]) || cleanEnv(process.env[name])) continue;
-      process.env[name] = raw;
-    }
-  }
-}
 
 function cleanEnv(value: string | undefined): string {
   return (value ?? "")
@@ -34,7 +9,6 @@ function cleanEnv(value: string | undefined): string {
 }
 
 function liveEnv(name: string): string {
-  loadDotEnvFiles();
   return cleanEnv(nodeEnv[name]) || cleanEnv(process.env[name]);
 }
 

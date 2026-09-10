@@ -2,8 +2,8 @@ import { loadEnvConfig } from "@next/env";
 import path from "path";
 import type { NextConfig } from "next";
 
-loadEnvConfig(path.resolve(process.cwd(), ".."));
 loadEnvConfig(process.cwd());
+loadEnvConfig(path.join(process.cwd(), ".."));
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["unpdf", "mammoth", "exceljs", "jszip", "docx", "pdf-lib", "pptxgenjs"],

@@ -16,6 +16,8 @@ export const copy = {
   nav: {
     conversation: "Conversation",
     documents: "Documents",
+    settings: "Réglages",
+    tipSettings: "Voir votre organisation, votre quota et vos préférences.",
     signOut: "Se déconnecter",
     roleAdmin: "Administrateur",
     roleUser: "Collaborateur",
@@ -99,10 +101,14 @@ export const copy = {
     attachCamera: "Prendre une photo",
     toolDocuments: "Recherche documentaire",
     toolDocumentsHint:
-      "Si la demande concerne un document indexé, Ubuntu IA s'appuie d'abord sur la base interne. Sinon, ces documents ne sont ni utilisés ni cités.",
+      "Activée par défaut. Ubuntu IA interroge la base interne lorsque la demande s'y prête. Désactivez-la pour un envoi sans documents.",
+    toolDocumentsOn: "Recherche documentaire activée.",
+    toolDocumentsOff: "Recherche documentaire désactivée pour les envois suivants.",
     toolWeb: "Recherche web",
     toolWebHint:
-      "Si la demande n'a pas trait aux documents indexés, Ubuntu IA répond avec le modèle et le web, sans afficher de sources internes.",
+      "Activée par défaut. Ubuntu IA peut compléter avec le web. Désactivez-la pour rester hors ligne.",
+    toolWebOn: "Recherche web activée.",
+    toolWebOff: "Recherche web désactivée pour les envois suivants.",
     toolImage: "Créer une image",
     toolImageOn:
       "Création d'image activée pour la prochaine réponse. La recherche interne et le web restent pris en compte.",
@@ -113,7 +119,9 @@ export const copy = {
     imageFailed: "L'image n'a pas pu être générée. Réessayez dans un instant.",
     toolResearch: "Analyse approfondie",
     toolResearchHint:
-      "Toujours active. Ubuntu IA agit comme un agent : il classe chaque message (question ou tâche), choisit les outils, puis exécute. Les documents et la mise en forme passent par Claude Opus 5 et les skills Anthropic.",
+      "Activée par défaut. Ubuntu IA enchaîne les outils (documents, livrables). Désactivez-la pour une réponse directe, sans tour d'agent.",
+    toolResearchOn: "Analyse approfondie activée.",
+    toolResearchOff: "Analyse approfondie désactivée pour les envois suivants.",
     toolCanvas: "Canevas",
     toolCanvasOn:
       "Canevas activé pour l'envoi suivant. Ubuntu IA produira un livrable fini (document, plan, code ou tableau).",
@@ -123,7 +131,7 @@ export const copy = {
     canvasHeading: "Livrable",
     toolFile: "Fichier téléchargeable",
     toolFileOn:
-      "Un fichier téléchargeable sera produit pour l'envoi suivant (PDF, Word, Excel, PowerPoint ou le format demandé), avec Claude Opus et les skills Claude Office.",
+      "Un fichier téléchargeable sera produit pour l'envoi suivant (PDF, Word, Excel, PowerPoint ou le format demandé), avec le dernier Claude et les skills Claude Office.",
     toolFileOff: "Génération de fichier désactivée.",
     toolFileArmed: "Fichier : activé pour l'envoi suivant",
     toolFileDisarm: "Désactiver la génération de fichier",
@@ -235,7 +243,7 @@ export const copy = {
     tipSourceOpen: "Ouvrir cette source dans un nouvel onglet.",
     emptyTitle: "Posez votre question",
     emptyBody:
-      "Ubuntu IA s'appuie sur openai/gpt-6-astra : analyse, code, documents, calcul, images, recherche web et lecture de fichiers. Les documents internes priment lorsqu'ils concernent le sujet.",
+      "Ubuntu IA répond avec le dernier modèle DeepSeek. Les documents Word, Excel et PowerPoint passent par le dernier Claude, et les images par le dernier modèle ChatGPT. Les documents internes priment lorsqu'ils concernent le sujet.",
     emptyHint: "Exemple : Rédige un plan d'action, analyse ce fichier, ou explique une procédure interne.",
     historyLoading: "Chargement de vos conversations",
     historyErrorTitle: "L'historique n'a pas pu être chargé",
@@ -358,7 +366,7 @@ export const copy = {
       "Ajoutez, suivez ou retirez les fichiers et pages qui alimentent Ubuntu IA. Une page web est indexée une par une.",
     uploadTitle: "Indexer un fichier",
     uploadLead:
-      "PDF, Word, Excel (.xlsx, .xls), PowerPoint, CSV, images et infographies, jusqu'à 20 Mo. Le modèle lit le texte, les tableaux et le contenu visuel.",
+      "PDF, Word (.docx, .doc), Excel (.xlsx, .xls), PowerPoint (.pptx, .ppt), CSV, images et infographies, jusqu'à 25 Mo. Le modèle lit le texte, les tableaux et le contenu visuel.",
     uploadDrop: "Déposez un fichier ici, ou",
     uploadBrowse: "choisir un fichier",
     urlTitle: "Indexer une page web",
@@ -423,7 +431,7 @@ export const copy = {
     errors: {
       fileType:
         "Ce format n'est pas accepté. Envoyez un PDF, Word, Excel, PowerPoint, CSV, texte, image ou infographie.",
-      fileSize: "Le fichier dépasse 20 Mo. Réduisez-le ou découpez-le avant de l'envoyer.",
+      fileSize: "Le fichier dépasse 25 Mo. Réduisez-le ou découpez-le avant de l'envoyer.",
       ingest: "L'indexation n'a pas pu démarrer. Réessayez dans un instant.",
       urlRequired: "Indiquez l'adresse complète de la page à indexer.",
       urlFormat:

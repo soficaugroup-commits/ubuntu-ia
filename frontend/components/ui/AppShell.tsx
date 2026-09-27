@@ -64,6 +64,7 @@ export function AppShell({ children }: Props) {
 
   const links: NavLink[] = [
     { href: "/chat", label: copy.nav.conversation, tip: copy.nav.tipConversation },
+    { href: "/reglages", label: copy.nav.settings, tip: copy.nav.tipSettings },
     ...(user.role === "administrateur"
       ? [{ href: "/admin", label: copy.nav.documents, tip: copy.nav.tipDocuments }]
       : []),

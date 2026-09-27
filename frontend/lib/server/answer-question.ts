@@ -53,7 +53,7 @@ const WEAK_MATCH = 0.4;
 const INTERNAL_TOPIC =
   /\b(soficau|ubuntu group|ubuntu ia|proc[eé]dure interne|note de service|r[eè]glement int[eé]rieur)\b/i;
 const EXCERPT_CHARS = 280;
-const WEB_ANSWER_MS = 70_000;
+const WEB_ANSWER_MS = 150_000;
 const DOCS_ANSWER_MS = 50_000;
 
 export type RetrievedChunk = {
@@ -146,7 +146,7 @@ export async function* streamAnswerQuestion(
 
   const [selectedRaw, prepared, storedMemory] = await Promise.all([
     plan.needRag
-      ? retrieveIndexed(query).catch((error) => {
+      ? retrieveIndexed(query, memoryContext?.userId).catch((error) => {
           console.error("[chat] rag", error);
           return [] as RetrievedChunk[];
         })
@@ -336,6 +336,7 @@ export async function* streamAnswerQuestion(
       content,
       formats: formats.length ? formats : ["pdf"],
       attachments: prepared,
+      userId: memoryContext?.userId,
       onProgress: (phase, format) => {
         if (phase === "content") {
           queue.push(step("file", steps.stepsFileContent, "running"));
@@ -460,17 +461,36 @@ function searchQuery(question: string, history: HistoryTurn[]): string {
   return `${previous.content.trim()}\n${question.trim()}`;
 }
 
-async function retrieveIndexed(query: string): Promise<RetrievedChunk[]> {
+async function retrieveIndexed(query: string, userId?: string): Promise<RetrievedChunk[]> {
   const [vector] = await embedTexts([query]);
-  return relevantChunks(query, await matchChunks(vector));
+  return relevantChunks(query, await matchChunks(vector, userId));
 }
 
-async function matchChunks(vector: number[]): Promise<RetrievedChunk[]> {
-  const { data, error } = await supabaseAdmin().rpc("match_document_chunks", {
-    query_embedding: vector,
-    match_count: MATCH_COUNT,
-    match_threshold: MATCH_THRESHOLD,
-  });
+async function matchChunks(vector: number[], userId?: string): Promise<RetrievedChunk[]> {
+  let organisationId: string | null = null;
+  if (userId) {
+    const profile = await supabaseAdmin()
+      .from("users")
+      .select("organisation_id")
+      .eq("id", userId)
+      .maybeSingle();
+    organisationId = (profile.data?.organisation_id as string | null) ?? null;
+  }
+  const scoped = organisationId
+    ? await supabaseAdmin().rpc("match_document_chunks_scoped", {
+        query_embedding: vector,
+        match_count: MATCH_COUNT,
+        match_threshold: MATCH_THRESHOLD,
+        organisation_id: organisationId,
+      })
+    : { data: null, error: { message: "no-org" } };
+  const { data, error } = scoped.error
+    ? await supabaseAdmin().rpc("match_document_chunks", {
+        query_embedding: vector,
+        match_count: MATCH_COUNT,
+        match_threshold: MATCH_THRESHOLD,
+      })
+    : scoped;
   if (error) {
     throw new Error(
       `La recherche dans les documents indexés a échoué${error.message ? ` : ${error.message}` : "."}`,
@@ -505,11 +525,11 @@ async function completeAnswer(
   const models = documentWork
     ? uniqueModels(
         preferred,
-        "anthropic/claude-opus-5",
-        "anthropic/claude-opus-4.5",
+        "anthropic/claude-opus-5.5",
+        "anthropic/claude-fable-5.1",
         chatModel(endpoint),
       )
-    : uniqueModels(preferred, "openai/gpt-6-astra", "gpt-6-astra");
+    : uniqueModels(preferred, "deepseek/deepseek-v4.1-flash", "~deepseek/deepseek-flash-latest");
   const reasoning = {
     effort: reasoningEffort(question, attachments.length),
     exclude: true,

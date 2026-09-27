@@ -80,6 +80,32 @@ def extract_text(path: Path) -> str:
     return text
 
 
+def extract_legacy_office(path: Path) -> str:
+    """Texte lisible d'un .doc / .ppt (flux UTF-16 du conteneur OLE)."""
+    raw = path.read_bytes()
+    text = raw.decode("utf-16le", errors="ignore")
+    parts: list[str] = []
+    current: list[str] = []
+    for char in text:
+        if char.isprintable() or char in "\n\t ":
+            current.append(char)
+        else:
+            chunk = "".join(current).strip()
+            if len(chunk) >= 12:
+                parts.append(chunk)
+            current = []
+    tail = "".join(current).strip()
+    if len(tail) >= 12:
+        parts.append(tail)
+    joined = "\n".join(parts).strip()
+    if len(joined) < 40:
+        raise IngestionError(
+            "Ce fichier .doc ou .ppt ne contient pas de texte extractible. "
+            "Enregistrez-le en .docx ou .pptx."
+        )
+    return joined[:200_000]
+
+
 def extract_file(path: str | Path) -> str:
     """Valide le fichier puis retourne le texte brut exploitable par le modèle."""
     resolved = Path(path).expanduser().resolve()
@@ -96,6 +122,8 @@ def extract_file(path: str | Path) -> str:
         return extract_csv(resolved)
     if kind == ".pptx":
         return extract_pptx(resolved)
+    if kind in {".doc", ".ppt"}:
+        return extract_legacy_office(resolved)
     if kind in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".tif", ".tiff", ".bmp"}:
         return extract_image(resolved)
     return extract_text(resolved)

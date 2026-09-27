@@ -16,9 +16,10 @@ import {
   verifyContent,
   type StyleJob,
 } from "@/lib/server/style-transfer";
+import { storeGeneratedFile } from "@/lib/server/generated-files";
 import type { FileFormat, GeneratedFile } from "@/lib/types";
 
-const MAX_BYTES = 6 * 1024 * 1024;
+const MAX_BYTES = 25 * 1024 * 1024;
 
 const MIME: Record<FileFormat, string> = {
   pdf: "application/pdf",
@@ -47,6 +48,7 @@ export async function generateChatFiles(input: {
   content: string;
   formats: FileFormat[];
   attachments: PreparedAttachment[];
+  userId?: string;
   onProgress?: (
     phase: "content" | "build",
     format?: FileFormat,
@@ -81,12 +83,19 @@ export async function generateChatFiles(input: {
       if (!check.ok) {
         console.warn("[chat] content-guard", format, check.missing);
       }
+      const stored = await storeGeneratedFile({
+        userId: input.userId,
+        name: `${stem}.${EXT[format]}`,
+        mime: MIME[format],
+        format,
+        bytes: Buffer.from(bytes),
+      });
       files.push({
         id: crypto.randomUUID(),
         name: `${stem}.${EXT[format]}`,
         mime: MIME[format],
         format,
-        url: `data:${MIME[format]};base64,${Buffer.from(bytes).toString("base64")}`,
+        url: stored ?? `data:${MIME[format]};base64,${Buffer.from(bytes).toString("base64")}`,
       });
     } catch (error) {
       console.error("[chat] file", format, error);

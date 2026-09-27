@@ -1,6 +1,6 @@
 import "server-only";
 import {
-  imageModel,
+  imageModelCandidates,
   imagesUrl,
   openRouterHeaders,
   resolveLlmEndpoint,
@@ -14,7 +14,7 @@ export async function generateChatImage(
   references: string[] = [],
 ): Promise<GeneratedImage | null> {
   const endpoint = resolveLlmEndpoint();
-  const model = imageModel(endpoint);
+  const models = imageModelCandidates(endpoint);
   const refs = references.filter(Boolean).slice(0, 4).map((url) => ({
     type: "image_url" as const,
     image_url: { url },
@@ -32,7 +32,8 @@ export async function generateChatImage(
       ];
 
   let lastError = "";
-  for (const extra of tries) {
+  for (const model of models) {
+    for (const extra of tries) {
     try {
       const response = await fetch(imagesUrl(endpoint), {
         method: "POST",
@@ -66,6 +67,7 @@ export async function generateChatImage(
       lastError =
         error instanceof Error ? `${model}: ${error.message}` : `${model}: erreur image`;
       console.error("[chat] image", lastError);
+    }
     }
   }
 

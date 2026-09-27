@@ -35,6 +35,8 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      # Requis au runtime pour les embeddings (indexation). Absent du dépôt :
+      # le .env local n'est pas déployé. À renseigner dans le dashboard Render.
       - key: OPENROUTER_API_KEY
         sync: false
       - key: RESEND_API_KEY
@@ -42,9 +44,11 @@ services:
       - key: RESEND_FROM_EMAIL
         sync: false
       - key: CHAT_MODEL
-        value: openai/gpt-6-astra
+        value: "~deepseek/deepseek-flash-latest"
       - key: FILE_MODEL
-        value: anthropic/claude-opus-5
+        value: "~anthropic/claude-opus-latest"
+      - key: IMAGE_MODEL
+        value: openai/gpt-image-2.5-sunburst
       - key: OFFICE_WORKER_URL
         sync: false
       - key: OFFICE_WORKER_SECRET

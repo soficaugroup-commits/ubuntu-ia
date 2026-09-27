@@ -1,6 +1,7 @@
 export const INDEXABLE_EXTENSIONS = [
   ".pdf",
   ".docx",
+  ".doc",
   ".txt",
   ".md",
   ".csv",
@@ -8,6 +9,7 @@ export const INDEXABLE_EXTENSIONS = [
   ".xlsm",
   ".xls",
   ".pptx",
+  ".ppt",
   ".png",
   ".jpg",
   ".jpeg",
@@ -21,6 +23,7 @@ export const INDEXABLE_EXTENSIONS = [
 export const INDEXABLE_MIME_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
   "text/plain",
   "text/markdown",
   "text/csv",
@@ -28,6 +31,7 @@ export const INDEXABLE_MIME_TYPES = [
   "application/vnd.ms-excel.sheet.macroEnabled.12",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-powerpoint",
   "image/png",
   "image/jpeg",
   "image/gif",

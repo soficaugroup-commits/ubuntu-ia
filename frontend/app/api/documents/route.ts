@@ -21,7 +21,7 @@ void process.env.OPENAI_BASE_URL;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const configured = assertDocumentSecrets();
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
         );
       }
       const document = await withDocumentsClient(request, () =>
-        createFileDocument(file, categorie),
+        createFileDocument(file, categorie, actor.id),
       );
       return NextResponse.json({ document });
     }
@@ -95,6 +95,7 @@ export async function POST(request: Request) {
           body.storagePath ?? "",
           body.filename ?? body.storagePath ?? "document",
           body.categorie ?? "",
+          actor.id,
         ),
       );
       return NextResponse.json({ document });
@@ -108,7 +109,7 @@ export async function POST(request: Request) {
       );
     }
     const document = await withDocumentsClient(request, () =>
-      createUrlDocument(url, body.categorie ?? ""),
+      createUrlDocument(url, body.categorie ?? "", actor.id),
     );
     return NextResponse.json({ document });
   } catch (exc) {

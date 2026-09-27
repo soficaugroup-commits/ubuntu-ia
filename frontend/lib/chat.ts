@@ -6,7 +6,13 @@ export function compactTools(tools?: ChatTools): ChatTools | undefined {
   if (tools?.image) next.image = true;
   if (tools?.canvas) next.canvas = true;
   if (tools?.file) next.file = true;
-  return next.image || next.canvas || next.file ? next : undefined;
+  if (tools?.documents === false) next.documents = false;
+  if (tools?.web === false) next.web = false;
+  if (tools?.research === false) next.research = false;
+  else if (tools?.research) next.research = true;
+  return next.image || next.canvas || next.file || next.documents === false || next.web === false || next.research !== undefined
+    ? next
+    : undefined;
 }
 
 export function createUserMessage(

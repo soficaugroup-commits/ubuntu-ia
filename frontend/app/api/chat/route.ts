@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { compactTools } from "@/lib/chat";
 import { streamAnswerQuestion } from "@/lib/server/answer-question";
 import {
   getUserConversation,
@@ -10,6 +11,7 @@ import {
   persistImmediateFacts,
   refreshUserMemory,
 } from "@/lib/server/user-memory";
+import { assertMessageQuota, recordMessageUse } from "@/lib/server/quotas";
 import { isSessionActor, requireUser } from "@/lib/server/require-admin";
 import type { ChatStreamEvent } from "@/lib/chat-stream-events";
 import type {
@@ -37,7 +39,7 @@ void process.env.VISION_MODEL;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -58,6 +60,10 @@ export async function POST(request: Request) {
   const actor = await requireUser(request);
   if (!isSessionActor(actor)) {
     return NextResponse.json({ error: actor.error }, { status: actor.status });
+  }
+  const quota = await assertMessageQuota(actor.id);
+  if (quota) {
+    return NextResponse.json({ error: quota }, { status: 429 });
   }
 
   let body: {
@@ -130,6 +136,14 @@ export async function POST(request: Request) {
             image: Boolean(body.tools?.image),
             canvas: Boolean(body.tools?.canvas),
             file: Boolean(body.tools?.file),
+            documents: body.tools?.documents === false ? false : undefined,
+            web: body.tools?.web === false ? false : undefined,
+            research:
+              body.tools?.research === false
+                ? false
+                : body.tools?.research
+                  ? true
+                  : undefined,
           },
           body.attachments ?? [],
           { userId: actor.id },
@@ -211,6 +225,7 @@ export async function POST(request: Request) {
         };
         try {
           await saveUserConversation(actor.id, conversation);
+          if (status === "answered") await recordMessageUse(actor.id);
         } catch (error) {
           console.error("[chat] save", error);
         }
@@ -289,14 +304,7 @@ function mergeTurn(
       role: "user",
       content: question,
       attachments: attachments?.length ? attachments : undefined,
-      tools:
-        tools?.image || tools?.canvas || tools?.file
-          ? {
-              image: Boolean(tools.image),
-              canvas: Boolean(tools.canvas),
-              file: Boolean(tools.file),
-            }
-          : undefined,
+      tools: compactTools(tools),
       createdAt: new Date().toISOString(),
     },
     assistant,

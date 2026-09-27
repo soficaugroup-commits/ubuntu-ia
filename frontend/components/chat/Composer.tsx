@@ -131,6 +131,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [imageOn, setImageOn] = useState(false);
   const [canvasOn, setCanvasOn] = useState(false);
   const [fileOn, setFileOn] = useState(false);
+  const [documentsOn, setDocumentsOn] = useState(true);
+  const [webOn, setWebOn] = useState(true);
+  const [researchOn, setResearchOn] = useState(true);
   const [toolsHint, setToolsHint] = useState<string | undefined>();
   const [dictating, setDictating] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -380,6 +383,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     const imageRequested = imageOn;
     const canvasRequested = canvasOn;
     const fileRequested = fileOn;
+    const documentsRequested = documentsOn;
+    const webRequested = webOn;
+    const researchRequested = researchOn;
     setValidation(undefined);
     setFileError(undefined);
     setToolsHint(undefined);
@@ -400,6 +406,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         image: imageRequested,
         canvas: canvasRequested,
         file: fileRequested,
+        documents: documentsRequested ? undefined : false,
+        web: webRequested ? undefined : false,
+        research: researchRequested ? undefined : false,
       });
     })();
   }
@@ -538,12 +547,12 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       tip: copy.chat.tipToolDocuments,
       icon: IconSearch,
       action: "documents",
-      active: true,
+      active: documentsOn,
     },
     { id: "dictate", label: copy.chat.dictate, tip: copy.chat.tipToolDictate, icon: IconMic, action: "dictate" },
-    { id: "web", label: copy.chat.toolWeb, tip: copy.chat.tipToolWeb, icon: IconGlobe, action: "web", active: true },
+    { id: "web", label: copy.chat.toolWeb, tip: copy.chat.tipToolWeb, icon: IconGlobe, action: "web", active: webOn },
     { id: "image", label: copy.chat.toolImage, tip: copy.chat.tipToolImage, icon: IconSparkle, action: "image", active: imageOn },
-    { id: "research", label: copy.chat.toolResearch, tip: copy.chat.tipToolResearch, icon: IconResearch, action: "research", active: true },
+    { id: "research", label: copy.chat.toolResearch, tip: copy.chat.tipToolResearch, icon: IconResearch, action: "research", active: researchOn },
     { id: "canvas", label: copy.chat.toolCanvas, tip: copy.chat.tipToolCanvas, icon: IconCanvas, action: "canvas", active: canvasOn },
     { id: "file", label: copy.chat.toolFile, tip: copy.chat.tipToolFile, icon: IconFile, action: "file", active: fileOn },
   ];
@@ -569,9 +578,25 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     else if (action === "photos") photoRef.current?.click();
     else if (action === "camera") cameraRef.current?.click();
     else if (action === "dictate") toggleDictate();
-    else if (action === "documents") setToolsHint(copy.chat.toolDocumentsHint);
-    else if (action === "web") setToolsHint(copy.chat.toolWebHint);
-    else if (action === "research") setToolsHint(copy.chat.toolResearchHint);
+    else if (action === "documents") {
+      setDocumentsOn((current) => {
+        const next = !current;
+        setToolsHint(next ? copy.chat.toolDocumentsOn : copy.chat.toolDocumentsOff);
+        return next;
+      });
+    } else if (action === "web") {
+      setWebOn((current) => {
+        const next = !current;
+        setToolsHint(next ? copy.chat.toolWebOn : copy.chat.toolWebOff);
+        return next;
+      });
+    } else if (action === "research") {
+      setResearchOn((current) => {
+        const next = !current;
+        setToolsHint(next ? copy.chat.toolResearchOn : copy.chat.toolResearchOff);
+        return next;
+      });
+    }
     else if (action === "image") {
       setImageOn((current) => {
         const next = !current;

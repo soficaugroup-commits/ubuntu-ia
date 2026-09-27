@@ -129,16 +129,12 @@ def validate_file(path: Path) -> str:
         if not _is_ole(header):
             raise IngestionError("L'extension .xls ne correspond pas au contenu réel.")
         return suffix
-    if suffix == ".doc":
-        raise IngestionError(
-            "Les anciens fichiers Word (.doc) ne sont pas lus. "
-            "Enregistrez-le au format .docx, puis renvoyez-le."
-        )
-    if suffix == ".ppt":
-        raise IngestionError(
-            "Les anciennes présentations (.ppt) ne sont pas lues. "
-            "Enregistrez-la au format .pptx, puis renvoyez-la."
-        )
+    if suffix in {".doc", ".ppt"}:
+        if not _is_ole(header):
+            raise IngestionError(
+                "L'extension ne correspond pas à un fichier Office ancien (.doc / .ppt)."
+            )
+        return suffix
     if suffix in IMAGE_EXTENSIONS:
         if not _is_image(header, suffix):
             raise IngestionError("L'extension image ne correspond pas au contenu réel.")

@@ -23,7 +23,7 @@ export type VoiceTalkEvent =
   | { type: "fin"; content: string }
   | { type: "erreur"; message: string };
 
-const VOICE_MS = 45_000;
+const VOICE_MS = 120_000;
 const STT_MS = 12_000;
 const FALLBACK_MODELS = ["openai/gpt-audio-mini", "openai/gpt-audio"];
 

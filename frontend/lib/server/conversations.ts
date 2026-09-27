@@ -277,12 +277,30 @@ function asFileFormat(value: unknown): GeneratedFile["format"] {
 
 function parseTools(value: unknown): ChatTools | undefined {
   if (!value || typeof value !== "object") return undefined;
-  const row = value as { image?: unknown; canvas?: unknown; file?: unknown };
+  const row = value as {
+    image?: unknown;
+    canvas?: unknown;
+    file?: unknown;
+    documents?: unknown;
+    web?: unknown;
+    research?: unknown;
+  };
   const tools: ChatTools = {};
   if (row.image) tools.image = true;
   if (row.canvas) tools.canvas = true;
   if (row.file) tools.file = true;
-  return tools.image || tools.canvas || tools.file ? tools : undefined;
+  if (row.documents === false) tools.documents = false;
+  if (row.web === false) tools.web = false;
+  if (row.research === false) tools.research = false;
+  else if (row.research) tools.research = true;
+  return tools.image ||
+    tools.canvas ||
+    tools.file ||
+    tools.documents === false ||
+    tools.web === false ||
+    tools.research !== undefined
+    ? tools
+    : undefined;
 }
 
 function parseAttachment(value: unknown): ChatAttachment | null {

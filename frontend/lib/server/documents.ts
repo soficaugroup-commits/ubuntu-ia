@@ -10,7 +10,7 @@ import {
 } from "@/lib/server/index-document";
 import type { KnowledgeDocument } from "@/lib/types";
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 type DocumentRow = {
   id: string;
@@ -73,9 +73,21 @@ async function fetchDocument(id: string): Promise<DocumentRow> {
   return data as DocumentRow;
 }
 
+async function organisationIdFor(userId?: string): Promise<string | undefined> {
+  if (!userId) return undefined;
+  const { data, error } = await supabaseAdmin()
+    .from("users")
+    .select("organisation_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !data?.organisation_id) return undefined;
+  return String(data.organisation_id);
+}
+
 export async function createFileDocument(
   file: File,
   categorie: string,
+  userId?: string,
 ): Promise<KnowledgeDocument> {
   const ext = fileExtension(file.name);
   if (!ext) {
@@ -85,12 +97,13 @@ export async function createFileDocument(
   }
   if (file.size > MAX_FILE_BYTES) {
     throw new IngestUserError(
-      "Le fichier dépasse 20 Mo. Réduisez-le ou découpez-le avant de l'envoyer.",
+      "Le fichier dépasse 25 Mo. Réduisez-le ou découpez-le avant de l'envoyer.",
     );
   }
 
   const titre = file.name.replace(/\.[^.]+$/, "") || file.name;
   const admin = supabaseAdmin();
+  const organisationId = await organisationIdFor(userId);
   const { data, error } = await admin
     .from("documents")
     .insert({
@@ -98,6 +111,7 @@ export async function createFileDocument(
       categorie: categorie || null,
       type_source: "fichier",
       statut_indexation: "en_cours",
+      ...(organisationId ? { organisation_id: organisationId } : {}),
     })
     .select(DOCUMENT_COLUMNS)
     .single();
@@ -124,6 +138,7 @@ export async function createStoredFileDocument(
   storagePath: string,
   filename: string,
   categorie: string,
+  userId?: string,
 ): Promise<KnowledgeDocument> {
   const stored = assertStoredPath(storagePath);
   const ext = fileExtension(filename) || fileExtension(stored);
@@ -135,6 +150,7 @@ export async function createStoredFileDocument(
 
   const titre = filename.replace(/\.[^.]+$/, "") || filename;
   const admin = supabaseAdmin();
+  const organisationId = await organisationIdFor(userId);
   const { data, error } = await admin
     .from("documents")
     .insert({
@@ -143,6 +159,7 @@ export async function createStoredFileDocument(
       type_source: "fichier",
       chemin_stockage: stored,
       statut_indexation: "en_cours",
+      ...(organisationId ? { organisation_id: organisationId } : {}),
     })
     .select(DOCUMENT_COLUMNS)
     .single();
@@ -164,7 +181,9 @@ export async function createStoredFileDocument(
 export async function createUrlDocument(
   url: string,
   categorie: string,
+  userId?: string,
 ): Promise<KnowledgeDocument> {
+  const organisationId = await organisationIdFor(userId);
   const { data, error } = await supabaseAdmin()
     .from("documents")
     .insert({
@@ -173,6 +192,7 @@ export async function createUrlDocument(
       type_source: "url",
       url_source: url,
       statut_indexation: "en_cours",
+      ...(organisationId ? { organisation_id: organisationId } : {}),
     })
     .select(DOCUMENT_COLUMNS)
     .single();

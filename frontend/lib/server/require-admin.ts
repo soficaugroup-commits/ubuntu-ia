@@ -1,3 +1,4 @@
+import { emailDomain } from "@/lib/domains";
 import { supabaseForRequest } from "@/lib/server/supabase-admin";
 import type { UserRole } from "@/lib/types";
 
@@ -46,6 +47,16 @@ export async function requireUser(
   if (profile.data.statut === "suspendu") {
     return {
       error: "Ce compte est suspendu. Contactez un administrateur.",
+      status: 403,
+    };
+  }
+
+  const domain = emailDomain(profile.data.email);
+  const domains = await admin.from("domaines_autorises").select("domaine");
+  const allowed = (domains.data ?? []).map((row) => String(row.domaine).toLowerCase());
+  if (allowed.length > 0 && (!domain || !allowed.includes(domain))) {
+    return {
+      error: "Cette adresse n'appartient pas à un domaine autorisé.",
       status: 403,
     };
   }

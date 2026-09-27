@@ -42,9 +42,7 @@ export async function extractFromBuffer(
     );
   }
   if (suffix === ".doc" || suffix === ".ppt") {
-    throw new Error(
-      "Enregistrez ce fichier au format .docx ou .pptx, puis renvoyez-le.",
-    );
+    return extractLegacyOffice(buffer);
   }
   if (IMAGE_MIME[suffix]) {
     return describeImage(buffer, IMAGE_MIME[suffix]);
@@ -53,18 +51,25 @@ export async function extractFromBuffer(
 }
 
 export async function extractFromUrl(url: string): Promise<{ titre: string; text: string }> {
-  const parsed = new URL(url);
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error("Indiquez une URL http ou https complète.");
-  }
+  const { assertPublicHttpUrl } = await import("@/lib/server/public-url");
+  const parsed = await assertPublicHttpUrl(url);
 
-  const response = await fetch(url, {
+  const response = await fetch(parsed.href, {
     headers: { "User-Agent": "UbuntuIA-Indexer/1.0" },
-    redirect: "follow",
-    signal: AbortSignal.timeout(15000),
+    redirect: "manual",
+    signal: AbortSignal.timeout(20000),
   });
+  if (response.status >= 300 && response.status < 400) {
+    const next = response.headers.get("location");
+    if (!next) throw new Error("La page n'a pas pu être récupérée.");
+    return extractFromUrl(new URL(next, parsed).href);
+  }
   if (!response.ok) {
     throw new Error("La page n'a pas pu être récupérée. Vérifiez qu'elle est publique.");
+  }
+  const length = Number(response.headers.get("content-length") || 0);
+  if (length > 20 * 1024 * 1024) {
+    throw new Error("La page dépasse 20 Mo.");
   }
 
   const html = await response.text();
@@ -75,6 +80,18 @@ export async function extractFromUrl(url: string): Promise<{ titre: string; text
     throw new Error("Aucun contenu textuel utile n'a été trouvé sur cette page.");
   }
   return { titre: title, text };
+}
+
+function extractLegacyOffice(buffer: Buffer): string {
+  const utf16 = buffer.toString("utf16le");
+  const parts = utf16.match(/[\p{L}\p{N}][\p{L}\p{N} ,.'’:;()\-\n]{12,}/gu) ?? [];
+  const text = parts.join("\n").replace(/\u0000/g, " ").replace(/[ \t]+\n/g, "\n").trim();
+  if (text.length < 40) {
+    throw new Error(
+      "Ce fichier .doc ou .ppt ne contient pas de texte extractible. Enregistrez-le en .docx ou .pptx.",
+    );
+  }
+  return text.slice(0, 200_000);
 }
 
 function decodeText(buffer: Buffer): string {

@@ -18,7 +18,7 @@ export async function buildPptx(
   deck.subject = "SOFICAU Ubuntu Group";
 
   addCover(deck, spec, theme);
-  const sections = spec.sections.slice(0, 10);
+  const sections = spec.sections.slice(0, 30);
   sections.forEach((section, index) =>
     addSectionSlide(deck, section, index, theme, options.synthesized),
   );

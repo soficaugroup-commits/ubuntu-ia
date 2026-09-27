@@ -46,6 +46,12 @@ export type ChatTools = {
   image?: boolean;
   canvas?: boolean;
   file?: boolean;
+  /** false : pas de recherche documentaire pour cet envoi. */
+  documents?: boolean;
+  /** false : pas de recherche web pour cet envoi. */
+  web?: boolean;
+  /** false : pas de tour d'outils agent. true : forcer l'analyse approfondie. */
+  research?: boolean;
 };
 
 export type FileFormat =

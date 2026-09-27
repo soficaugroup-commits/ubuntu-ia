@@ -1,15 +1,125 @@
 import "server-only";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { env as nodeEnv } from "node:process";
 
 function cleanEnv(value: string | undefined): string {
   return (value ?? "")
     .trim()
+    .replace(/^\uFEFF/, "")
     .replace(/^["']|["']$/g, "")
     .replace(/^Bearer\s+/i, "");
 }
 
+/**
+ * Next n'inline que les accès statiques `process.env.NOM`.
+ * Un accès `process.env[nom]` reste vide, et le `.env` du dépôt est à la racine,
+ * pas dans `frontend/` où tourne le serveur.
+ */
+function staticEnv(name: string): string | undefined {
+  switch (name) {
+    case "OPENROUTER_API_KEY":
+      return process.env.OPENROUTER_API_KEY;
+    case "UBUNTU_OPENROUTER_API_KEY":
+      return process.env.UBUNTU_OPENROUTER_API_KEY;
+    case "OPENROUTER_BASE_URL":
+      return process.env.OPENROUTER_BASE_URL;
+    case "NETLIFY_AI_GATEWAY_KEY":
+      return process.env.NETLIFY_AI_GATEWAY_KEY;
+    case "NETLIFY_AI_GATEWAY_BASE_URL":
+      return process.env.NETLIFY_AI_GATEWAY_BASE_URL;
+    case "OPENAI_API_KEY":
+      return process.env.OPENAI_API_KEY;
+    case "OPENAI_BASE_URL":
+      return process.env.OPENAI_BASE_URL;
+    case "EMBEDDING_MODEL":
+      return process.env.EMBEDDING_MODEL;
+    case "CHAT_MODEL":
+      return process.env.CHAT_MODEL;
+    case "FILE_MODEL":
+      return process.env.FILE_MODEL;
+    case "DOCUMENT_MODEL":
+      return process.env.DOCUMENT_MODEL;
+    case "IMAGE_MODEL":
+      return process.env.IMAGE_MODEL;
+    case "VISION_MODEL":
+      return process.env.VISION_MODEL;
+    case "REALTIME_MODEL":
+      return process.env.REALTIME_MODEL;
+    case "REALTIME_VOICE":
+      return process.env.REALTIME_VOICE;
+    case "VOICE_STT_MODEL":
+      return process.env.VOICE_STT_MODEL;
+    case "SUPABASE_URL":
+      return process.env.SUPABASE_URL;
+    case "NEXT_PUBLIC_SUPABASE_URL":
+      return process.env.NEXT_PUBLIC_SUPABASE_URL;
+    case "SUPABASE_SERVICE_ROLE_KEY":
+      return process.env.SUPABASE_SERVICE_ROLE_KEY;
+    case "RESEND_API_KEY":
+      return process.env.RESEND_API_KEY;
+    case "RESEND_FROM_EMAIL":
+      return process.env.RESEND_FROM_EMAIL;
+    case "NEXT_PUBLIC_APP_URL":
+      return process.env.NEXT_PUBLIC_APP_URL;
+    case "APP_URL":
+      return process.env.APP_URL;
+    default:
+      return undefined;
+  }
+}
+
+const fileEnv = new Map<string, string>();
+let fileEnvLoaded = false;
+
+function ensureFileEnv(): void {
+  if (fileEnvLoaded) return;
+  fileEnvLoaded = true;
+  const files = [
+    path.join(process.cwd(), ".env"),
+    path.join(process.cwd(), "..", ".env"),
+  ];
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    let text = "";
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq <= 0) continue;
+      const key = trimmed.slice(0, eq).trim();
+      if (!key || fileEnv.has(key) || cleanEnv(nodeEnv[key])) continue;
+      const value = cleanEnv(trimmed.slice(eq + 1));
+      if (!value) continue;
+      fileEnv.set(key, value);
+      try {
+        nodeEnv[key] = value;
+      } catch {
+        // process.env peut être figé par le bundler.
+      }
+    }
+  }
+}
+
+function runtimeEnv(name: string): string {
+  // Accès indirect : le bundler ne peut pas figer la valeur au moment du build.
+  // En production, Render injecte les secrets dans le processus, pas dans un fichier.
+  const bucket = globalThis.process?.env as Record<string, string | undefined> | undefined;
+  return cleanEnv(bucket?.[name]) || cleanEnv(nodeEnv[name]);
+}
+
 function liveEnv(name: string): string {
-  return cleanEnv(nodeEnv[name]) || cleanEnv(process.env[name]);
+  ensureFileEnv();
+  return (
+    runtimeEnv(name) ||
+    cleanEnv(staticEnv(name)) ||
+    cleanEnv(fileEnv.get(name))
+  );
 }
 
 export function supabaseUrl(): string {
@@ -113,7 +223,7 @@ export function resolveLlmEndpoint(): LlmEndpoint {
   }
 
   throw new Error(
-    "Aucun fournisseur d'embeddings n'est disponible sur le serveur.",
+    "Aucun fournisseur d'embeddings n'est disponible sur le serveur. Définissez OPENROUTER_API_KEY dans l'environnement d'exécution (Render), pas seulement dans un fichier .env local.",
   );
 }
 
@@ -121,12 +231,13 @@ export function embeddingRequest(endpoint: LlmEndpoint): {
   url: string;
   model: string;
 } {
+  const configured = liveEnv("EMBEDDING_MODEL");
   const official = isOfficialOpenRouterBase(endpoint.baseUrl);
-  const model = official
-    ? "openai/text-embedding-3-small"
-    : endpoint.baseUrl.includes("openrouter")
+  const model =
+    configured ||
+    (official || endpoint.baseUrl.includes("openrouter")
       ? "openai/text-embedding-3-small"
-      : "text-embedding-3-small";
+      : "text-embedding-3-small");
   return {
     url: `${endpoint.baseUrl}/embeddings`,
     model,
@@ -159,35 +270,56 @@ export function visionModel(): string {
 }
 
 export function chatModel(endpoint: LlmEndpoint): string {
+  return chatModelCandidates(endpoint)[0];
+}
+
+export function chatModelCandidates(endpoint: LlmEndpoint): string[] {
   const configured = liveEnv("CHAT_MODEL");
-  if (configured) return configured;
   const official =
     isOfficialOpenRouterBase(endpoint.baseUrl) ||
     endpoint.baseUrl.includes("openrouter");
-  return official ? "openai/gpt-6-astra" : "gpt-6-astra";
+  const primary =
+    configured ||
+    (official ? "~deepseek/deepseek-flash-latest" : "deepseek-v4.1-flash");
+  const fallbacks = official
+    ? ["deepseek/deepseek-v4.1-flash", "deepseek/deepseek-v4-flash"]
+    : ["deepseek-v4.1-flash", "deepseek-chat"];
+  return [primary, ...fallbacks.filter((item) => item !== primary)];
 }
 
 /**
  * Modèle dédié à la rédaction / mise en forme / design des livrables
  * (Word, Excel, PowerPoint, PDF, canevas documentaire).
- * Défaut : Claude Opus 5 via OpenRouter + skills Anthropic.
+ * Défaut : le dernier Claude (alias OpenRouter), aujourd'hui Opus 5.5.
  */
 export function fileModel(endpoint: LlmEndpoint): string {
+  return fileModelCandidates(endpoint)[0];
+}
+
+export function fileModelCandidates(endpoint: LlmEndpoint): string[] {
   const configured = liveEnv("FILE_MODEL") || liveEnv("DOCUMENT_MODEL");
-  if (configured) return configured;
   const official =
     isOfficialOpenRouterBase(endpoint.baseUrl) ||
     endpoint.baseUrl.includes("openrouter");
-  return official ? "anthropic/claude-opus-5" : "claude-opus-5";
+  const primary = configured || (official ? "~anthropic/claude-opus-latest" : "claude-opus-5.5");
+  const fallbacks = official
+    ? ["anthropic/claude-opus-5.5", "anthropic/claude-fable-5.1"]
+    : ["claude-opus-5.5", "claude-fable-5-1"];
+  return [primary, ...fallbacks.filter((item) => item !== primary)];
 }
 
 export function imageModel(endpoint: LlmEndpoint): string {
+  return imageModelCandidates(endpoint)[0];
+}
+
+export function imageModelCandidates(endpoint: LlmEndpoint): string[] {
   const configured = liveEnv("IMAGE_MODEL");
-  if (configured) return configured;
   const official =
     isOfficialOpenRouterBase(endpoint.baseUrl) ||
     endpoint.baseUrl.includes("openrouter");
-  return official ? "openai/gpt-image-2" : "gpt-image-2";
+  const primary = configured || (official ? "openai/gpt-image-2.5-sunburst" : "gpt-image-2.5-sunburst");
+  const fallbacks = ["openai/gpt-image-2.5-flare", "openai/gpt-image-2"];
+  return [primary, ...fallbacks.filter((item) => item !== primary)];
 }
 
 export function imagesUrl(endpoint: LlmEndpoint): string {

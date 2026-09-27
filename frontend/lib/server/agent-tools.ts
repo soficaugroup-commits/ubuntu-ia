@@ -149,7 +149,7 @@ export async function runAgentToolRound(input: {
         "Analyse le message : question simple, tâche, ou les deux.",
         "Si un fait interne SOFICAU / Ubuntu est en jeu : appelle search_documents.",
         "Si un livrable (fichier, image, canevas) est attendu : appelle prepare_deliverable.",
-        "Pour les documents et la mise en forme, tu t'appuies sur Claude Opus et les skills Anthropic office.",
+        "Pour les documents et la mise en forme, tu t'appuies sur le dernier Claude et les skills Anthropic office.",
         "Tu peux enchaîner plusieurs outils. N'invente aucun fait interne.",
         "Si aucune action n'est utile, réponds simplement OK sans outil.",
         skills ? `\n${skills}` : "",

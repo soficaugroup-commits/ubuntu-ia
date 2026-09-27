@@ -9,9 +9,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["unpdf", "mammoth", "exceljs", "jszip", "docx", "pdf-lib", "pptxgenjs"],
   experimental: {
     serverActions: {
-      bodySizeLimit: "21mb",
+      bodySizeLimit: "26mb",
     },
-    proxyClientMaxBodySize: "21mb",
+    proxyClientMaxBodySize: "26mb",
   },
 };
 

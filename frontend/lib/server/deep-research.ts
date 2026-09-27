@@ -1,7 +1,7 @@
 import "server-only";
 import {
   chatCompletionsUrl,
-  chatModel,
+  chatModelCandidates,
   openRouterHeaders,
   resolveLlmEndpoint,
 } from "@/lib/server/env";
@@ -110,23 +110,40 @@ export function parseWebSources(body: Record<string, unknown>): SourceCitation[]
   return sources.slice(0, 6);
 }
 
+function isMissingModel(status: number): boolean {
+  return status === 404;
+}
+
 export async function postChatCompletion(
   payload: Record<string, unknown>,
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<{ ok: boolean; status: number; body: Record<string, unknown>; raw: string }> {
   const endpoint = resolveLlmEndpoint();
-  const response = await fetch(chatCompletionsUrl(endpoint), {
-    method: "POST",
-    headers: openRouterHeaders(endpoint.key),
-    body: JSON.stringify({
-      ...payload,
-      stream: false,
-      model: payload.model ?? chatModel(endpoint),
-    }),
-    cache: "no-store",
-    signal: mergeAbort(timeoutMs, signal),
-  });
+  const models = payload.model
+    ? [String(payload.model)]
+    : chatModelCandidates(endpoint);
+  let response: Response | null = null;
+  let used = models[0];
+  for (const model of models) {
+    used = model;
+    response = await fetch(chatCompletionsUrl(endpoint), {
+      method: "POST",
+      headers: openRouterHeaders(endpoint.key),
+      body: JSON.stringify({
+        ...payload,
+        stream: false,
+        model,
+      }),
+      cache: "no-store",
+      signal: mergeAbort(timeoutMs, signal),
+    });
+    if (response.ok || !isMissingModel(response.status)) break;
+  }
+  if (!response) {
+    return { ok: false, status: 503, body: {}, raw: "" };
+  }
+  void used;
   const raw = await response.text();
   let body: Record<string, unknown> = {};
   try {
@@ -150,20 +167,31 @@ export async function* streamChatCompletion(
   body: Record<string, unknown>;
 }> {
   const endpoint = resolveLlmEndpoint();
-  const response = await fetch(chatCompletionsUrl(endpoint), {
-    method: "POST",
-    headers: {
-      ...openRouterHeaders(endpoint.key),
-      Accept: "text/event-stream",
-    },
-    body: JSON.stringify({
-      ...payload,
-      stream: true,
-      model: payload.model ?? chatModel(endpoint),
-    }),
-    cache: "no-store",
-    signal: mergeAbort(timeoutMs, signal),
-  });
+  const models = payload.model
+    ? [String(payload.model)]
+    : chatModelCandidates(endpoint);
+  let response: Response | null = null;
+  for (const model of models) {
+    response = await fetch(chatCompletionsUrl(endpoint), {
+      method: "POST",
+      headers: {
+        ...openRouterHeaders(endpoint.key),
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        ...payload,
+        stream: true,
+        model,
+      }),
+      cache: "no-store",
+      signal: mergeAbort(timeoutMs, signal),
+    });
+    if (response.ok || !isMissingModel(response.status)) break;
+  }
+  if (!response) {
+    yield { ok: false, status: 503, body: {}, done: true };
+    return;
+  }
 
   const contentType = response.headers.get("content-type") || "";
   if (!response.ok) {

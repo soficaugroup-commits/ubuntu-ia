@@ -24,7 +24,7 @@ import type {
   KnowledgeDocument,
 } from "@/lib/types";
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const GENERIC_TYPES = new Set(["", "application/octet-stream"]);
 
 type AddResult<TOk, TCode extends string> =

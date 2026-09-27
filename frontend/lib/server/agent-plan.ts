@@ -63,10 +63,17 @@ export function planAgentTurn(
   else if (text.length > 80) mode = "hybrid";
   else mode = "answer";
 
+  const documentsOff = tools.documents === false;
+  const webOff = tools.web === false;
+  const researchOff = tools.research === false;
+  const researchForced = tools.research === true;
+
   const needRag =
-    !chat && (INTERNAL_TOPIC.test(text) || mode !== "answer" || asks);
-  const needWeb = !chat;
-  const needTools = mode !== "answer" || needRag || deliverable;
+    !documentsOff && !chat && (INTERNAL_TOPIC.test(text) || mode !== "answer" || asks);
+  const needWeb = !webOff && !chat;
+  const needTools =
+    !researchOff &&
+    (researchForced || mode !== "answer" || needRag || deliverable);
 
   return {
     mode,
@@ -76,7 +83,7 @@ export function planAgentTurn(
     needFile,
     needCanvas,
     formats,
-    needTools: needTools && mode !== "answer",
+    needTools: researchForced ? needTools : needTools && mode !== "answer",
     label: labelFor(mode, deliverable),
   };
 }

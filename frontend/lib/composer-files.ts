@@ -32,7 +32,7 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
-export const CHAT_ANALYZE_MAX_BYTES = 8 * 1024 * 1024;
+export const CHAT_ANALYZE_MAX_BYTES = 20 * 1024 * 1024;
 
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

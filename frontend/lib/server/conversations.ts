@@ -105,14 +105,13 @@ export async function saveUserConversation(
     throw new Error("La conversation n'a pas pu être enregistrée.");
   }
 
+  // Un titre déjà posé (provisoire ou modèle léger) n'est pas recalculé ici.
+  // Le renommage manuel verrouille title_locked et n'est plus écrasé.
   const locked = Boolean(existing?.title_locked || conversation.titleLocked);
-  const autoTitle = titleFromStored(conversation.messages);
-  const title = locked
-    ? sanitizeTitle(conversation.title) ||
-      sanitizeTitle(String(existing?.title ?? "")) ||
-      autoTitle ||
-      "Nouvelle conversation"
-    : autoTitle || sanitizeTitle(conversation.title) || "Nouvelle conversation";
+  const stored = sanitizeTitle(String(existing?.title ?? ""));
+  const incoming = sanitizeTitle(conversation.title);
+  const placeholder = titleFromStored(conversation.messages) || "Nouvelle conversation";
+  const title = locked ? incoming || stored || placeholder : stored || incoming || placeholder;
 
   const payload = {
     id: conversation.id,
@@ -127,6 +126,65 @@ export async function saveUserConversation(
   if (error) {
     throw new Error("La conversation n'a pas pu être enregistrée.");
   }
+}
+
+/**
+ * Écrit le titre automatique seulement si la personne n'a pas renommé
+ * et s'il s'agit encore du premier message.
+ * Retourne null si le titre ne doit pas changer.
+ */
+export async function applyGeneratedTitle(
+  userId: string,
+  conversationId: string,
+  title: string,
+): Promise<string | null> {
+  const cleaned = sanitizeTitle(title);
+  if (!cleaned) return null;
+  const { data: existing, error: readError } = await supabaseAdmin()
+    .from("conversations")
+    .select("title_locked, messages")
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (readError) {
+    console.error("[chat] titre lecture", readError);
+    return null;
+  }
+  if (existing?.title_locked) return null;
+  if (existing && userTurnCount(existing.messages) > 1) return null;
+  if (!existing) {
+    const { error } = await supabaseAdmin().from("conversations").insert({
+      id: conversationId,
+      user_id: userId,
+      title: cleaned,
+      title_locked: false,
+    });
+    if (error) {
+      console.error("[chat] titre création", error);
+      return null;
+    }
+    return cleaned;
+  }
+  const { data, error } = await supabaseAdmin()
+    .from("conversations")
+    .update({ title: cleaned })
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .eq("title_locked", false)
+    .select("title")
+    .maybeSingle();
+  if (error) {
+    console.error("[chat] titre écriture", error);
+    return null;
+  }
+  return data ? sanitizeTitle(String(data.title ?? "")) || cleaned : null;
+}
+
+function userTurnCount(messages: unknown): number {
+  if (!Array.isArray(messages)) return 0;
+  return messages.filter(
+    (item) => item && typeof item === "object" && (item as { role?: string }).role === "user",
+  ).length;
 }
 
 export function sanitizeTitle(value: string): string {

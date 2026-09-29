@@ -14,7 +14,7 @@ const COMPLEX_INTENT =
   /\b(analyse|explique|compare|d[eé]veloppe|pourquoi|comment|code|calcul|d[eé]montre|planifie|r[eé]dige|optimise|d[eé]bug|refactor|architecture|preuve|mod[eè]le)\b/i;
 
 const FILE_INTENT =
-  /\b(pdf|docx?|xlsx?|pptx?|csv|powerpoint|excel|word|classeur|diapos?|pr[eé]sentation|t[eé]l[eé]chargeable|t[eé]l[eé]charge[rz]?|exporte[rz]?|export(er)?|fichier (word|excel|pdf|powerpoint))\b/i;
+  /\b(pdf|docx?|xlsx?|pptx?|csv|html|powerpoint|excel|word|classeur|diapos?|pr[eé]sentation|landing page|page web|site web|rapport interactif|dashboard en ligne|t[eé]l[eé]chargeable|t[eé]l[eé]charge[rz]?|exporte[rz]?|export(er)?|fichier (word|excel|pdf|powerpoint))\b/i;
 
 const EDIT_INTENT =
   /\b(modifie[rz]?|corrige[rz]?|mets? [àa] jour|actualise[rz]?|ajoute[rz]?|retire[rz]?|change[rz]?|compl[eè]te[rz]?|convertis|transforme[rz]?|adapte[rz]?|mets? en forme|applique[rz]?|reproduis|inspire[- ]toi|habillage)\b/i;
@@ -73,6 +73,9 @@ export function requestedFormats(
   if (/\b(json)\b/.test(text)) add("json");
   if (/\b(markdown|\.md)\b/.test(text)) add("md");
   if (/\b(txt|texte brut)\b/.test(text)) add("txt");
+  if (/\b(landing page|page web|site web|rapport interactif|page html|dashboard en ligne|\.html)\b/.test(text)) {
+    add("html");
+  }
 
   if (!found.length && STYLE_TRANSFER.test(question) && attachmentNames.length) {
     add("docx");
@@ -109,6 +112,7 @@ export function formatFromName(name: string): FileFormat | undefined {
   if (lower.endsWith(".json")) return "json";
   if (lower.endsWith(".md")) return "md";
   if (lower.endsWith(".txt")) return "txt";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "html";
   return undefined;
 }
 

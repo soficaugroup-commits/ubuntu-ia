@@ -1,7 +1,10 @@
 import "server-only";
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, PDFTextField, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { renderChartPng } from "@/lib/server/chart-png";
 import { defaultDna, fitLogo, hexRgb, type DesignDna } from "@/lib/server/design-dna";
-import { type DocumentSpec, type DocSection } from "@/lib/server/document-spec";
+import { BRAND, type DocumentSpec, type DocSection } from "@/lib/server/document-spec";
+import { isLong } from "@/lib/server/document-process";
+import { plainInline, toPdfText } from "@/lib/server/rich-text";
 
 type PdfColors = {
   navy: ReturnType<typeof rgb>;
@@ -38,13 +41,62 @@ export async function buildPdf(spec: DocumentSpec, dna: DesignDna = defaultDna()
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-  const cover = pdf.addPage([PAGE_W, PAGE_H]);
-  drawCover(cover, spec, font, bold, colors);
-  await drawLogo(pdf, cover, dna, 48, 740);
+  const showCover = spec.design?.couverture !== false;
+  if (showCover) {
+    const cover = pdf.addPage([PAGE_W, PAGE_H]);
+    drawCover(cover, spec, font, bold, colors, dna);
+    await drawLogo(pdf, cover, dna, 48, 740);
+  }
+  if (isLong(spec)) drawPlan(pdf, spec, font, bold, colors);
   for (const section of spec.sections) {
-    drawSection(pdf, section, font, bold, colors);
+    await drawSection(pdf, section, font, bold, colors, dna, spec.design?.motif !== false);
   }
   return pdf.save();
+}
+
+export async function fillPdfForm(buffer: Buffer, spec: DocumentSpec): Promise<Uint8Array | null> {
+  const pdf = await PDFDocument.load(buffer);
+  const form = pdf.getForm();
+  const fields = form.getFields();
+  if (!fields.length) return null;
+  const lines = [spec.title, spec.subtitle ?? "", ...spec.sections.flatMap((section) => [section.title, ...section.body, ...section.bullets])]
+    .map((line) => toPdfText(plainInline(line)))
+    .filter(Boolean);
+  let cursor = 0;
+  let filled = 0;
+  for (const field of fields) {
+    if (!(field instanceof PDFTextField)) continue;
+    field.setText((lines[cursor] ?? "").slice(0, 400));
+    cursor += 1;
+    filled += 1;
+  }
+  if (!filled) return null;
+  form.updateFieldAppearances();
+  return pdf.save();
+}
+
+function drawPlan(
+  pdf: PDFDocument,
+  spec: DocumentSpec,
+  font: PDFFont,
+  bold: PDFFont,
+  colors: PdfColors,
+) {
+  const page = pdf.addPage([PAGE_W, PAGE_H]);
+  fillCanvas(page, colors);
+  page.drawText(toPdfText("Plan"), { x: 48, y: 780, size: 18, font: bold, color: colors.navy });
+  let y = 740;
+  for (const section of spec.sections) {
+    if (y < 72) break;
+    page.drawText(toPdfText(plainInline(section.title)).slice(0, 90), {
+      x: 48,
+      y,
+      size: 11,
+      font,
+      color: colors.navy,
+    });
+    y -= 22;
+  }
 }
 
 async function drawLogo(pdf: PDFDocument, page: PDFPage, dna: DesignDna, x: number, y: number) {
@@ -61,34 +113,68 @@ async function drawLogo(pdf: PDFDocument, page: PDFPage, dna: DesignDna, x: numb
   }
 }
 
-function drawCover(page: PDFPage, spec: DocumentSpec, font: PDFFont, bold: PDFFont, colors: PdfColors) {
+function drawCover(
+  page: PDFPage,
+  spec: DocumentSpec,
+  font: PDFFont,
+  bold: PDFFont,
+  colors: PdfColors,
+  dna: DesignDna,
+) {
+  const label = pdfMarks(spec, dna);
   page.drawRectangle({ x: 0, y: 0, width: PAGE_W, height: PAGE_H, color: colors.navy });
-  page.drawCircle({ x: 520, y: 760, size: 90, color: colors.gold, opacity: 0.9 });
-  page.drawCircle({ x: 40, y: 80, size: 70, color: colors.gold, opacity: 0.35 });
-  page.drawText("UBUNTU IA", {
-    x: 56,
-    y: 520,
-    size: 12,
-    font: bold,
-    color: colors.gold,
-  });
+  if (spec.design?.motif !== false) {
+    page.drawCircle({ x: 520, y: 760, size: 90, color: colors.gold, opacity: 0.9 });
+    page.drawCircle({ x: 40, y: 80, size: 70, color: colors.gold, opacity: 0.35 });
+  }
+  if (label.eyebrow) {
+    page.drawText(toPdfText(label.eyebrow), {
+      x: 56,
+      y: 520,
+      size: 12,
+      font: bold,
+      color: colors.gold,
+    });
+  }
   wrapText(page, spec.title, 56, 470, 480, 26, bold, colors.white, 32);
   if (spec.subtitle) {
     wrapText(page, spec.subtitle, 56, 360, 460, 13, font, colors.gold, 14);
   }
-  page.drawText(winAnsi("SOFICAU Ubuntu Group"), {
-    x: 56,
-    y: 64,
-    size: 11,
-    font,
-    color: colors.gold,
-  });
+  if (label.signature) {
+    page.drawText(toPdfText(label.signature), {
+      x: 56,
+      y: 64,
+      size: 11,
+      font,
+      color: colors.gold,
+    });
+  }
 }
 
-function drawSection(pdf: PDFDocument, section: DocSection, font: PDFFont, bold: PDFFont, colors: PdfColors) {
+function pdfMarks(spec: DocumentSpec, dna: DesignDna): { eyebrow: string; signature: string } {
+  const brand =
+    dna.primary.toUpperCase() === BRAND.navy &&
+    dna.accent.toUpperCase() === BRAND.gold &&
+    !dna.headerLabel &&
+    !dna.sourceName;
+  return {
+    eyebrow: spec.design?.marque?.trim() || dna.headerLabel?.trim() || (brand ? "UBUNTU IA" : ""),
+    signature: spec.design?.signature?.trim() || (brand ? "SOFICAU Ubuntu Group" : dna.sourceName || ""),
+  };
+}
+
+async function drawSection(
+  pdf: PDFDocument,
+  section: DocSection,
+  font: PDFFont,
+  bold: PDFFont,
+  colors: PdfColors,
+  dna: DesignDna,
+  motif: boolean,
+) {
   let page = pdf.addPage([PAGE_W, PAGE_H]);
   fillCanvas(page, colors);
-  goldCorner(page, colors);
+  if (motif) goldCorner(page, colors);
   let y = 780;
   y = wrapText(page, section.title, 48, y, 500, 20, bold, colors.navy, 26);
   y -= 16;
@@ -97,14 +183,18 @@ function drawSection(pdf: PDFDocument, section: DocSection, font: PDFFont, bold:
     if (y < 72) {
       page = pdf.addPage([PAGE_W, PAGE_H]);
       fillCanvas(page, colors);
-      goldCorner(page, colors);
+      if (motif) goldCorner(page, colors);
       y = 780;
     }
     y = wrapText(page, text, 48, y, 500, size, face, color, size + 6);
   };
 
+  if (section.quote) write(section.quote, 13, bold, colors.gold);
   for (const paragraph of section.body) write(paragraph, 11, font);
-  for (const item of section.bullets) write(`- ${item}`, 11, font, colors.mid);
+  for (const item of section.bullets) write(`- ${plainInline(item)}`, 11, font, colors.mid);
+  for (const [index, item] of (section.numbered ?? []).entries()) {
+    write(`${index + 1}. ${plainInline(item)}`, 11, font, colors.mid);
+  }
 
   if (section.table) {
     y -= 10;
@@ -114,7 +204,7 @@ function drawSection(pdf: PDFDocument, section: DocSection, font: PDFFont, bold:
       if (y < 80) {
         page = pdf.addPage([PAGE_W, PAGE_H]);
         fillCanvas(page, colors);
-        goldCorner(page, colors);
+        if (motif) goldCorner(page, colors);
         y = 780;
       }
       page.drawRectangle({
@@ -125,7 +215,7 @@ function drawSection(pdf: PDFDocument, section: DocSection, font: PDFFont, bold:
         color: header ? colors.navy : colors.white,
       });
       cells.forEach((cell, index) => {
-        page.drawText(winAnsi(cell).slice(0, 28), {
+        page.drawText(fitCell(cell, font, header ? bold : font, colW - 8), {
           x: 52 + index * colW,
           y: y - 10,
           size: 8,
@@ -136,7 +226,7 @@ function drawSection(pdf: PDFDocument, section: DocSection, font: PDFFont, bold:
       y -= 20;
     };
     drawRow(section.table.headers, true);
-    for (const row of section.table.rows.slice(0, 16)) {
+    for (const row of section.table.rows) {
       drawRow(section.table.headers.map((_, index) => row[index] ?? ""), false);
     }
     y -= 8;
@@ -145,36 +235,55 @@ function drawSection(pdf: PDFDocument, section: DocSection, font: PDFFont, bold:
   if (section.chart) {
     y -= 8;
     write(section.chart.title, 12, bold, colors.gold);
-    const max = Math.max(
-      1,
-      ...section.chart.series.flatMap((series) => series.values),
-    );
-    section.chart.categories.slice(0, 8).forEach((category, index) => {
-      if (y < 90) {
+    if (y < 220) {
+      page = pdf.addPage([PAGE_W, PAGE_H]);
+      fillCanvas(page, colors);
+      if (motif) goldCorner(page, colors);
+      y = 780;
+    }
+    try {
+      const png = renderChartPng(section.chart, dna.chartColors, 640, 280);
+      const image = await pdf.embedPng(png);
+      const height = 180;
+      page.drawImage(image, { x: 48, y: y - height, width: 420, height });
+      y -= height + 12;
+    } catch {
+      /* le tableau de données reste lisible si l'image échoue */
+    }
+    const headers = ["Catégorie", ...section.chart.series.map((item) => item.name)];
+    const rows = section.chart.categories.map((category, index) => [
+      category,
+      ...section.chart!.series.map((item) => String(item.values[index] ?? "")),
+    ]);
+    const cols = Math.max(1, headers.length);
+    const colW = 499 / cols;
+    const drawChartRow = (cells: string[], header: boolean) => {
+      if (y < 80) {
         page = pdf.addPage([PAGE_W, PAGE_H]);
         fillCanvas(page, colors);
-        goldCorner(page, colors);
+        if (motif) goldCorner(page, colors);
         y = 780;
       }
-      const value = section.chart!.series[0]?.values[index] ?? 0;
-      const barW = Math.max(4, (value / max) * 320);
-      page.drawText(winAnsi(category).slice(0, 22), {
+      page.drawRectangle({
         x: 48,
-        y: y,
-        size: 9,
-        font,
-        color: colors.navy,
+        y: y - 16,
+        width: 499,
+        height: 20,
+        color: header ? colors.navy : colors.white,
       });
-      page.drawRectangle({ x: 200, y: y - 2, width: barW, height: 10, color: index % 2 === 0 ? colors.navy : colors.gold });
-      page.drawText(winAnsi(String(value)), {
-        x: 208 + barW,
-        y: y,
-        size: 8,
-        font: bold,
-        color: colors.navy,
+      cells.forEach((cell, index) => {
+        page.drawText(fitCell(cell, header ? bold : font, header ? bold : font, colW - 8), {
+          x: 52 + index * colW,
+          y: y - 10,
+          size: 8,
+          font: header ? bold : font,
+          color: header ? colors.white : colors.navy,
+        });
       });
-      y -= 18;
-    });
+      y -= 20;
+    };
+    drawChartRow(headers, true);
+    for (const row of rows) drawChartRow(row, false);
   }
 }
 
@@ -184,6 +293,10 @@ function fillCanvas(page: PDFPage, colors: PdfColors) {
 
 function goldCorner(page: PDFPage, colors: PdfColors) {
   page.drawCircle({ x: 575, y: 820, size: 36, color: colors.gold, opacity: 0.85 });
+}
+
+function fitCell(text: string, _font: PDFFont, _bold: PDFFont, _maxWidth: number): string {
+  return toPdfText(plainInline(text));
 }
 
 function wrapText(
@@ -197,7 +310,7 @@ function wrapText(
   color: ReturnType<typeof rgb>,
   lineGap: number,
 ): number {
-  const words = winAnsi(text).split(/\s+/).filter(Boolean);
+  const words = toPdfText(plainInline(text)).split(/\s+/).filter(Boolean);
   let line = "";
   let cursor = y;
   const flush = () => {
@@ -215,9 +328,3 @@ function wrapText(
   return cursor;
 }
 
-function winAnsi(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "?");
-}

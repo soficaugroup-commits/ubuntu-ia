@@ -1,12 +1,14 @@
 import "server-only";
 import type { PreparedAttachment } from "@/lib/server/chat-attachments";
 import { cloneDocxWithSpec } from "@/lib/server/clone-docx";
+import { clonePptxWithSpec } from "@/lib/server/clone-pptx";
 import { formatFromName } from "@/lib/server/design-dna";
 import { plainFromSpec, specFromMarkdown } from "@/lib/server/document-spec";
 import { buildDocx } from "@/lib/server/generate-chat-docx";
-import { buildPdf } from "@/lib/server/generate-chat-pdf";
+import { buildPdf, fillPdfForm } from "@/lib/server/generate-chat-pdf";
 import { buildPptx } from "@/lib/server/generate-chat-pptx";
 import { buildXlsx } from "@/lib/server/generate-chat-xlsx";
+import { withLiteralLayouts } from "@/lib/server/slide-plan";
 import {
   cleanSpec,
   fingerprintSpec,
@@ -16,6 +18,14 @@ import {
   verifyContent,
   type StyleJob,
 } from "@/lib/server/style-transfer";
+import { buildHtml } from "@/lib/server/generate-chat-html";
+import {
+  assertGuide,
+  consultGuide,
+  ensureContrast,
+  stageDeliverable,
+  type GuideBrief,
+} from "@/lib/server/document-process";
 import { storeGeneratedFile } from "@/lib/server/generated-files";
 import type { FileFormat, GeneratedFile } from "@/lib/types";
 
@@ -30,6 +40,7 @@ const MIME: Record<FileFormat, string> = {
   txt: "text/plain;charset=utf-8",
   md: "text/markdown;charset=utf-8",
   json: "application/json",
+  html: "text/html;charset=utf-8",
 };
 
 const EXT: Record<FileFormat, string> = {
@@ -41,6 +52,7 @@ const EXT: Record<FileFormat, string> = {
   txt: "txt",
   md: "md",
   json: "json",
+  html: "html",
 };
 
 export async function generateChatFiles(input: {
@@ -75,27 +87,38 @@ export async function generateChatFiles(input: {
 
   for (const format of input.formats) {
     try {
+      const guide = consultGuide(format);
       await input.onProgress?.("build", format);
-      const bytes = await buildFormat(format, markdown, spec, input.attachments, job);
+      let bytes = await buildFormat(format, markdown, spec, input.attachments, job, guide);
       if (!bytes || bytes.length === 0 || bytes.length > MAX_BYTES) continue;
-      const produced = await textFromGenerated(format, bytes).catch(() => "");
-      const check = verifyContent(tokens, produced, format === "pptx" && job.editorialSynthesis);
+      let produced = await textFromGenerated(format, bytes).catch(() => "");
+      let check = verifyContent(tokens, produced);
+      if (!check.ok && (format === "pptx" || format === "docx" || format === "pdf")) {
+        const retry = await buildFormat(format, markdown, withLiteralLayouts(spec), input.attachments, job, guide);
+        const retryText = await textFromGenerated(format, retry).catch(() => "");
+        const retryCheck = verifyContent(tokens, retryText);
+        if (retryCheck.missing.length < check.missing.length) {
+          bytes = retry;
+          check = retryCheck;
+        }
+      }
       if (!check.ok) {
         console.warn("[chat] content-guard", format, check.missing);
       }
+      const staged = await stageDeliverable(`${stem}.${EXT[format]}`, bytes);
       const stored = await storeGeneratedFile({
         userId: input.userId,
         name: `${stem}.${EXT[format]}`,
         mime: MIME[format],
         format,
-        bytes: Buffer.from(bytes),
+        bytes: staged,
       });
       files.push({
         id: crypto.randomUUID(),
         name: `${stem}.${EXT[format]}`,
         mime: MIME[format],
         format,
-        url: stored ?? `data:${MIME[format]};base64,${Buffer.from(bytes).toString("base64")}`,
+        url: stored ?? `data:${MIME[format]};base64,${staged.toString("base64")}`,
       });
     } catch (error) {
       console.error("[chat] file", format, error);
@@ -110,8 +133,11 @@ async function buildFormat(
   spec: ReturnType<typeof specFromMarkdown>,
   attachments: PreparedAttachment[],
   job: StyleJob,
+  guide: GuideBrief,
 ): Promise<Uint8Array> {
-  const { dna, style } = job;
+  assertGuide(guide, format);
+  const dna = ensureContrast(job.dna);
+  const { style } = job;
   if (format === "md") return encodeText(markdown);
   if (format === "txt") return encodeText(plainFromSpec(spec));
   if (format === "json") return encodeText(jsonFromMarkdown(markdown, spec));
@@ -134,8 +160,32 @@ async function buildFormat(
     }
     return buildDocx(spec, dna);
   }
+  if (format === "html") return buildHtml(spec, dna);
   if (format === "pptx") {
-    return buildPptx(spec, dna, { synthesized: job.editorialSynthesis });
+    const images = attachments
+      .filter((item) => item.kind === "image" && item.buffer && item !== style)
+      .map((item) => ({ mime: item.mime, bytes: item.buffer as Buffer }));
+    if (style?.buffer && formatFromName(style.name, style.mime) === "pptx") {
+      try {
+        const cloned = await clonePptxWithSpec(style.buffer, spec, {
+          synthesized: job.editorialSynthesis,
+        });
+        const produced = await textFromGenerated("pptx", cloned);
+        const check = verifyContent(fingerprintSpec(spec), produced);
+        if (check.ok) return cloned;
+        console.warn("[chat] clone pptx regression", check.missing);
+      } catch (error) {
+        console.error("[chat] clone pptx", error);
+      }
+    }
+    return buildPptx(spec, dna, { synthesized: job.editorialSynthesis, images });
+  }
+  const formPdf = attachments.find(
+    (item) => item.buffer && formatFromName(item.name, item.mime) === "pdf",
+  );
+  if (formPdf?.buffer) {
+    const filled = await fillPdfForm(formPdf.buffer, spec);
+    if (filled) return filled;
   }
   return buildPdf(spec, dna);
 }

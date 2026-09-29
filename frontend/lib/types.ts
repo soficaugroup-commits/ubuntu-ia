@@ -62,7 +62,8 @@ export type FileFormat =
   | "csv"
   | "txt"
   | "md"
-  | "json";
+  | "json"
+  | "html";
 
 export type GeneratedImage = {
   url: string;

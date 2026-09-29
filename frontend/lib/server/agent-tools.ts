@@ -88,7 +88,7 @@ export const AGENT_TOOLS = [
             type: "array",
             items: {
               type: "string",
-              enum: ["pdf", "docx", "xlsx", "pptx", "csv", "txt", "md", "json"],
+              enum: ["pdf", "docx", "xlsx", "pptx", "csv", "txt", "md", "json", "html"],
             },
             description: "Formats de fichier si kind=file.",
           },
@@ -112,6 +112,7 @@ const FILE_FORMATS: FileFormat[] = [
   "txt",
   "md",
   "json",
+  "html",
 ];
 
 /**

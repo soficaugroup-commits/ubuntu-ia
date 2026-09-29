@@ -12,12 +12,37 @@ export type DocTable = {
   rows: string[][];
 };
 
+export type SectionLayout =
+  | "auto"
+  | "copy"
+  | "cards"
+  | "stats"
+  | "table"
+  | "chart"
+  | "timeline"
+  | "compare"
+  | "quote"
+  | "divider"
+  | "image";
+
+export type SlideRatio = "16:9" | "16:10" | "4:3";
+
+export type DocKpi = {
+  value: string;
+  label: string;
+};
+
 export type DocSection = {
   title: string;
+  level?: 1 | 2 | 3;
   body: string[];
   bullets: string[];
+  bulletDepth?: number[];
+  numbered?: string[];
   table?: DocTable;
   chart?: DocChart;
+  layout?: SectionLayout;
+  quote?: string;
 };
 
 export type DocDesign = {
@@ -32,6 +57,12 @@ export type DocDesign = {
   text?: string;
   headingFont?: string;
   bodyFont?: string;
+  couverture?: boolean;
+  conclusion?: boolean;
+  motif?: boolean;
+  ratio?: SlideRatio;
+  signature?: string;
+  marque?: string;
 };
 
 export type DocumentSpec = {
@@ -39,6 +70,7 @@ export type DocumentSpec = {
   subtitle: string;
   sections: DocSection[];
   charts: DocChart[];
+  kpis?: DocKpi[];
   design?: DocDesign;
 };
 
@@ -55,40 +87,131 @@ export const BRAND = {
 type MarkdownBlock =
   | { type: "h"; level: 1 | 2 | 3; text: string }
   | { type: "p"; text: string }
-  | { type: "list"; items: string[] }
+  | { type: "list"; items: string[]; ordered: boolean; depths: number[] }
   | { type: "table"; headers: string[]; rows: string[][] }
   | { type: "code"; text: string };
 
 export function specFromMarkdown(markdown: string, question: string): DocumentSpec {
+  const prose = specFromBlocks(parseBlocks(markdown), question);
   const fromJson = parseSpecFence(markdown);
-  if (fromJson) return fromJson;
-  return specFromBlocks(parseBlocks(markdown), question);
+  if (!fromJson) return prose;
+  return mergeVisibleAnswer(fromJson, prose);
+}
+
+/** La réponse affichée dans le chat est le document. Un fence de design ne la remplace pas. */
+function mergeVisibleAnswer(fence: DocumentSpec, prose: DocumentSpec): DocumentSpec {
+  const fenceWeight = specTextWeight(fence);
+  const proseWeight = specTextWeight(prose);
+  if (proseWeight >= Math.max(80, fenceWeight)) {
+    return {
+      ...prose,
+      title: usefulTitle(fence.title) ? fence.title : prose.title,
+      subtitle: fence.subtitle || prose.subtitle,
+      charts: prose.charts.length ? prose.charts : fence.charts,
+      kpis: prose.kpis?.length ? prose.kpis : fence.kpis,
+      design: fence.design ?? prose.design,
+    };
+  }
+  const byTitle = new Map(prose.sections.map((section) => [normTitle(section.title), section]));
+  const sections = fence.sections.map((section) => {
+    if (sectionTextWeight(section) > 40) return section;
+    const match = byTitle.get(normTitle(section.title));
+    if (!match || sectionTextWeight(match) <= sectionTextWeight(section)) return section;
+    return {
+      ...section,
+      body: section.body.length ? section.body : match.body,
+      bullets: section.bullets.length ? section.bullets : match.bullets,
+      bulletDepth: section.bullets.length ? section.bulletDepth : match.bulletDepth,
+      numbered: section.numbered?.length ? section.numbered : match.numbered,
+      table: section.table ?? match.table,
+      chart: section.chart ?? match.chart,
+      quote: section.quote ?? match.quote,
+    };
+  });
+  const filled = specTextWeight({ ...fence, sections });
+  if (proseWeight > filled) {
+    return {
+      ...prose,
+      title: usefulTitle(fence.title) ? fence.title : prose.title,
+      subtitle: fence.subtitle || prose.subtitle,
+      design: fence.design ?? prose.design,
+      kpis: fence.kpis ?? prose.kpis,
+    };
+  }
+  return { ...fence, sections };
+}
+
+function usefulTitle(title: string): boolean {
+  const text = title.trim();
+  return Boolean(text) && text !== "Ubuntu IA" && text !== "Synthèse";
+}
+
+function normTitle(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function specTextWeight(spec: DocumentSpec): number {
+  return spec.sections.reduce((sum, section) => sum + sectionTextWeight(section), 0);
+}
+
+function sectionTextWeight(section: DocSection): number {
+  const table = section.table ? section.table.rows.flat().join(" ").length : 0;
+  return (
+    section.body.join(" ").length +
+    section.bullets.join(" ").length +
+    (section.numbered ?? []).join(" ").length +
+    (section.quote?.length ?? 0) +
+    table
+  );
 }
 
 function parseSpecFence(markdown: string): DocumentSpec | null {
-  const fence = /```(?:ubuntu-ia-doc|json)\s*([\s\S]*?)```/i.exec(markdown);
-  if (!fence?.[1]) return null;
+  const matches = [...markdown.matchAll(/```(?:ubuntu-ia-doc|json)\s*([\s\S]*?)```/gi)];
+  let best: DocumentSpec | null = null;
+  let bestWeight = -1;
+  for (const match of matches) {
+    const spec = specFromFenceBody(match[1] ?? "");
+    if (!spec) continue;
+    const weight = specTextWeight(spec) + (spec.sections.length > 0 ? 1 : 0);
+    if (weight > bestWeight) {
+      best = spec;
+      bestWeight = weight;
+    }
+  }
+  return best;
+}
+
+function specFromFenceBody(body: string): DocumentSpec | null {
   try {
-    const raw = JSON.parse(fence[1]) as Record<string, unknown>;
+    const raw = JSON.parse(body) as Record<string, unknown>;
     const title = String(raw.titre ?? raw.title ?? "").trim();
-    const sections = Array.isArray(raw.sections) ? raw.sections : [];
-    if (!title && !sections.length) return null;
+    const sectionSource = raw.sections ?? raw.parties ?? raw.chapitres;
+    const parsedSections =
+      typeof sectionSource === "string"
+        ? specFromBlocks(parseBlocks(sectionSource), title || "Document").sections
+        : Array.isArray(sectionSource)
+          ? sectionSource.flatMap((item) => sectionsFromUnknown(item))
+          : [];
+    if (!title && !parsedSections.length && !asDesign(raw.design ?? raw.miseEnForme)) return null;
     const charts = Array.isArray(raw.graphes)
       ? raw.graphes
       : Array.isArray(raw.charts)
         ? raw.charts
         : [];
-    const parsedSections = sections
-      .map((item) => asSection(item))
-      .filter((item): item is DocSection => Boolean(item));
     const parsedCharts = charts
       .map((item) => asChart(item))
       .filter((item): item is DocChart => Boolean(item));
     return {
       title: title || "Ubuntu IA",
-      subtitle: String(raw.sousTitre ?? raw.subtitle ?? "").trim(),
+      subtitle: String(raw.sousTitre ?? raw.subtitle ?? raw.chapo ?? "").trim(),
       sections: parsedSections,
       charts: parsedCharts,
+      kpis: asKpis(raw.indicateurs ?? raw.kpis),
       design: asDesign(raw.design ?? raw.miseEnForme),
     };
   } catch {
@@ -96,23 +219,60 @@ function parseSpecFence(markdown: string): DocumentSpec | null {
   }
 }
 
+function sectionsFromUnknown(value: unknown): DocSection[] {
+  const section = asSection(value);
+  if (!section || !value || typeof value !== "object") return [];
+  const row = value as Record<string, unknown>;
+  const nested = row.sousSections ?? row.sous_sections ?? row.children ?? row.sections;
+  const children = Array.isArray(nested) ? nested.flatMap((item) => sectionsFromUnknown(item)) : [];
+  return [section, ...children];
+}
+
 function asSection(value: unknown): DocSection | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
-  const title = String(row.titre ?? row.title ?? "").trim();
-  const body = Array.isArray(row.body)
-    ? row.body.map((item) => String(item).trim()).filter(Boolean)
-    : typeof row.body === "string"
-      ? [row.body.trim()]
-      : [];
-  const bulletsRaw = row.puces ?? row.bullets;
-  const bullets = Array.isArray(bulletsRaw)
-    ? bulletsRaw.map((item) => String(item).trim()).filter(Boolean)
-    : [];
+  const title = String(row.titre ?? row.title ?? row.nom ?? "").trim();
+  const prose = row.contenu ?? row.content ?? row.texte ?? row.text ?? row.description ?? row.paragraphes;
+  const fromBody = stringList(row.body);
+  const body = fromBody.length ? fromBody : stringList(prose);
+  const bullets = [
+    ...stringList(row.puces ?? row.bullets ?? row.points ?? row.items ?? row.liste),
+  ].map((item) => item.replace(/^[-*]\s+/, ""));
+  const numbered = stringList(row.numerotation ?? row.numbered);
   const table = asTable(row.tableau ?? row.table);
   const chart = asChart(row.graphe ?? row.chart) ?? undefined;
-  if (!title && !body.length && !bullets.length && !table) return null;
-  return { title: title || "Section", body, bullets, table, chart };
+  const quote = String(row.citation ?? row.quote ?? "").trim();
+  const layout = asLayout(row.miseEnPage ?? row.layout);
+  const level = asLevel(row.niveau ?? row.level);
+  if (!title && !body.length && !bullets.length && !numbered.length && !table && !chart && !quote) return null;
+  return {
+    title: title || "Section",
+    level,
+    body,
+    bullets,
+    numbered: numbered.length ? numbered : undefined,
+    table,
+    chart,
+    layout,
+    quote: quote || undefined,
+  };
+}
+
+function stringList(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value
+      .split(/\n+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item === "string") return item.trim() ? [item.trim()] : [];
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const text = String(row.texte ?? row.text ?? row.contenu ?? row.content ?? row.paragraphe ?? row.libelle ?? "").trim();
+    return text ? [text] : [];
+  });
 }
 
 function asTable(value: unknown): DocTable | undefined {
@@ -140,8 +300,93 @@ function asDesign(value: unknown): DocDesign | undefined {
     texte: pick("texte") ?? pick("text"),
     policeTitre: typeof row.policeTitre === "string" ? row.policeTitre : typeof row.headingFont === "string" ? row.headingFont : undefined,
     policeCorps: typeof row.policeCorps === "string" ? row.policeCorps : typeof row.bodyFont === "string" ? row.bodyFont : undefined,
+    couverture: asBool(row.couverture ?? row.cover),
+    conclusion: asBool(row.conclusion ?? row.close),
+    motif: asBool(row.motif ?? row.ornement),
+    ratio: asRatio(row.ratio ?? row.format),
+    signature: textOrUndefined(row.signature),
+    marque: textOrUndefined(row.marque ?? row.eyebrow),
   };
-  return Object.values(design).some(Boolean) ? design : undefined;
+  return Object.values(design).some((item) => item !== undefined) ? design : undefined;
+}
+
+function asKpis(value: unknown): DocKpi[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const kpis = value
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const row = item as Record<string, unknown>;
+      const label = String(row.libelle ?? row.label ?? "").trim();
+      const amount = String(row.valeur ?? row.value ?? "").trim();
+      if (!label || !amount) return null;
+      return { value: amount, label };
+    })
+    .filter((item): item is DocKpi => Boolean(item));
+  return kpis.length ? kpis : undefined;
+}
+
+function asBool(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === "oui" || value === 1) return true;
+  if (value === "false" || value === "non" || value === 0) return false;
+  return undefined;
+}
+
+function asRatio(value: unknown): SlideRatio | undefined {
+  const text = String(value ?? "").toLowerCase().replace(/\s/g, "");
+  if (text === "16:9" || text === "16x9") return "16:9";
+  if (text === "16:10" || text === "16x10") return "16:10";
+  if (text === "4:3" || text === "4x3") return "4:3";
+  return undefined;
+}
+
+function asLevel(value: unknown): 1 | 2 | 3 | undefined {
+  const n = Number(value);
+  if (n === 1 || n === 2 || n === 3) return n;
+  return undefined;
+}
+
+export function asLayout(value: unknown): SectionLayout | undefined {
+  const text = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const map: Record<string, SectionLayout> = {
+    auto: "auto",
+    copy: "copy",
+    texte: "copy",
+    cards: "cards",
+    cartes: "cards",
+    stats: "stats",
+    chiffres: "stats",
+    kpi: "stats",
+    table: "table",
+    tableau: "table",
+    chart: "chart",
+    graphe: "chart",
+    graphique: "chart",
+    timeline: "timeline",
+    frise: "timeline",
+    chronologie: "timeline",
+    compare: "compare",
+    comparaison: "compare",
+    versus: "compare",
+    quote: "quote",
+    citation: "quote",
+    divider: "divider",
+    separateur: "divider",
+    section: "divider",
+    image: "image",
+    visuel: "image",
+    photo: "image",
+  };
+  return map[text];
+}
+
+function textOrUndefined(value: unknown): string | undefined {
+  const text = String(value ?? "").trim();
+  return text || undefined;
 }
 
 function asChart(value: unknown): DocChart | null {
@@ -191,23 +436,37 @@ function specFromBlocks(blocks: MarkdownBlock[], question: string): DocumentSpec
   const subtitle =
     blocks.find((block) => block.type === "p")?.text.slice(0, 160) ?? "";
   const sections: DocSection[] = [];
-  let current: DocSection = { title: "Synthèse", body: [], bullets: [] };
+  let current: DocSection = { title: "Synthèse", level: 1, body: [], bullets: [] };
 
   const push = () => {
-    if (current.title || current.body.length || current.bullets.length || current.table) {
+    if (
+      current.title ||
+      current.body.length ||
+      current.bullets.length ||
+      current.numbered?.length ||
+      current.table ||
+      current.chart
+    ) {
       sections.push(current);
     }
   };
 
   for (const block of blocks) {
-    if (block.type === "h" && block.level <= 2) {
-      if (block.text === title && !sections.length && !current.body.length) continue;
+    if (block.type === "h") {
+      if (block.text === title && !sections.length && !current.body.length && !current.bullets.length) continue;
       push();
-      current = { title: block.text, body: [], bullets: [] };
+      current = { title: block.text, level: block.level, body: [], bullets: [] };
     } else if (block.type === "p") {
       current.body.push(block.text);
     } else if (block.type === "list") {
-      current.bullets.push(...block.items);
+      if (block.ordered) {
+        current.numbered = [...(current.numbered ?? []), ...block.items];
+      } else {
+        const start = current.bullets.length;
+        current.bullets.push(...block.items);
+        const depths = current.bulletDepth ? [...current.bulletDepth] : Array.from({ length: start }, () => 0);
+        current.bulletDepth = [...depths, ...block.depths];
+      }
     } else if (block.type === "table") {
       current.table = { headers: block.headers, rows: block.rows };
       current.chart = chartFromTable(current.title, block);
@@ -261,7 +520,8 @@ export function parseBlocks(markdown: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
   let i = 0;
   let paragraph: string[] = [];
-  let list: string[] = [];
+  let list: { text: string; depth: number }[] = [];
+  let listOrdered = false;
   let code: string[] | null = null;
   let skipFence = false;
 
@@ -271,7 +531,14 @@ export function parseBlocks(markdown: string): MarkdownBlock[] {
     if (text) blocks.push({ type: "p", text: stripInline(text) });
   };
   const flushList = () => {
-    if (list.length) blocks.push({ type: "list", items: list.map(stripInline) });
+    if (list.length) {
+      blocks.push({
+        type: "list",
+        ordered: listOrdered,
+        items: list.map((item) => stripInline(item.text)),
+        depths: list.map((item) => item.depth),
+      });
+    }
     list = [];
   };
 
@@ -280,7 +547,7 @@ export function parseBlocks(markdown: string): MarkdownBlock[] {
     if (code) {
       if (line.trim().startsWith("```")) {
         const body = code.join("\n");
-        if (!skipFence && body.trim()) blocks.push({ type: "code", text: body });
+        if (!skipFence && body.trim() && !specFromFenceBody(body)) blocks.push({ type: "code", text: body });
         code = null;
         skipFence = false;
       } else {
@@ -320,10 +587,16 @@ export function parseBlocks(markdown: string): MarkdownBlock[] {
       blocks.push({ type: "table", headers, rows });
       continue;
     }
-    const item = /^\s*[-*]\s+(.+)$/.exec(line);
-    if (item) {
+    const bullet = /^(\s*)[-*]\s+(.+)$/.exec(line);
+    const ordered = /^(\s*)\d+[.)]\s+(.+)$/.exec(line);
+    if (bullet || ordered) {
+      const orderedLine = Boolean(ordered && !bullet);
+      if (list.length && orderedLine !== listOrdered) flushList();
       flushParagraph();
-      list.push(item[1]);
+      listOrdered = orderedLine;
+      const match = (bullet ?? ordered)!;
+      const depth = match[1].replace(/\t/g, "  ").length >= 2 ? 1 : 0;
+      list.push({ text: match[2], depth });
       i += 1;
       continue;
     }
@@ -339,7 +612,9 @@ export function parseBlocks(markdown: string): MarkdownBlock[] {
   }
   flushParagraph();
   flushList();
-  return blocks.length ? blocks : [{ type: "p", text: stripInline(markdown) }];
+  if (blocks.length) return blocks;
+  const outside = markdown.replace(/```(?:ubuntu-ia-doc|json)\s*[\s\S]*?```/gi, " ").trim();
+  return outside ? [{ type: "p", text: stripInline(outside) }] : [];
 }
 
 function splitRow(line: string): string[] {
@@ -356,9 +631,6 @@ export function stripInline(text: string): string {
     .replace(/!\[[^\]]*]\([^)]+\)/g, "")
     .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/_{1,2}([^_]+)_{1,2}/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -366,7 +638,13 @@ export function stripInline(text: string): string {
 export function plainFromSpec(spec: DocumentSpec): string {
   const parts = [spec.title, spec.subtitle];
   for (const section of spec.sections) {
-    parts.push(section.title, ...section.body, ...section.bullets.map((item) => `- ${item}`));
+    parts.push(
+      section.title,
+      ...section.body,
+      ...section.bullets.map((item) => `- ${item}`),
+      ...(section.numbered ?? []).map((item, index) => `${index + 1}. ${item}`),
+      section.quote ?? "",
+    );
   }
   return parts.filter(Boolean).join("\n\n");
 }

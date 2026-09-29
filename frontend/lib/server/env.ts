@@ -269,6 +269,11 @@ export function visionModel(): string {
   return liveEnv("VISION_MODEL") || "openai/gpt-4o-mini";
 }
 
+/** Modèle court et peu coûteux, distinct du modèle de conversation. */
+export function titleModel(): string {
+  return liveEnv("TITLE_MODEL") || "openai/gpt-4o-mini";
+}
+
 export function chatModel(endpoint: LlmEndpoint): string {
   return chatModelCandidates(endpoint)[0];
 }

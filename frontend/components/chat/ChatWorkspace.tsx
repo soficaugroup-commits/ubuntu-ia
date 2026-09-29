@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Sheet } from "@/components/ui/Sheet";
 import { Surface } from "@/components/ui/Surface";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { IconHistory, IconMemory, IconPencil, IconTrash } from "@/components/ui/icons";
+import { IconHistory, IconMemory, IconMore } from "@/components/ui/icons";
 import { copy } from "@/content/fr";
 import {
   compactTools,
@@ -30,6 +30,7 @@ import {
   deleteConversation,
   loadConversations,
   renameConversation,
+  suggestConversationTitle,
 } from "@/lib/chat-api";
 import { interpolate } from "@/lib/format";
 import { loadOwnFeedback } from "@/lib/feedback-api";
@@ -45,7 +46,6 @@ import type {
   MessageFeedback,
 } from "@/lib/types";
 import type { ChatStreamEvent } from "@/lib/chat-stream-events";
-import { Dialog } from "@/components/ui/Dialog";
 import { TextField } from "@/components/ui/TextField";
 
 function createConversation(): Conversation {
@@ -250,6 +250,20 @@ export function ChatWorkspace() {
     }));
   }
 
+  function requestAutoTitle(conversationId: string, question: string) {
+    // Le titre arrive après le premier message, sans attendre la réponse.
+    void suggestConversationTitle(conversationId, question).then((result) => {
+      if (!result.ok || !result.title) return;
+      setConversations((current) =>
+        current.map((item) =>
+          item.id === conversationId && !item.titleLocked
+            ? { ...item, title: result.title as string }
+            : item,
+        ),
+      );
+    });
+  }
+
   function appendVoiceTurn(user: string, assistant: string) {
     const spokenUser = user.trim();
     const spokenAssistant = assistant.trim();
@@ -278,6 +292,9 @@ export function ChatWorkspace() {
         messages,
       };
     });
+    if (active && active.messages.length === 0 && !active.titleLocked && spokenUser && activeId) {
+      requestAutoTitle(activeId, spokenUser);
+    }
   }
 
   function ask(
@@ -374,6 +391,16 @@ export function ChatWorkspace() {
     );
 
     const snapshot = conversations.find((item) => item.id === activeId);
+    const conversationId = activeId;
+    const firstTurn =
+      !retrying &&
+      !replaceUserId &&
+      Boolean(conversationId) &&
+      (snapshot?.messages.length ?? 0) === 0 &&
+      !snapshot?.titleLocked;
+    if (firstTurn && conversationId) {
+      requestAutoTitle(conversationId, question);
+    }
     const history = (() => {
       if (replaceUserId) {
         const index = snapshot?.messages.findIndex((item) => item.id === replaceUserId) ?? -1;
@@ -734,14 +761,39 @@ function ConversationHistory({
   onDelete: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [menuId, setMenuId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const menuRef = useRef<HTMLLIElement>(null);
+  const renameRef = useRef<HTMLInputElement>(null);
+  const ignoreBlur = useRef(false);
   const target = conversations.find((item) => item.id === pendingId) ?? null;
-  const renamingTarget = conversations.find((item) => item.id === renamingId) ?? null;
+
+  useEffect(() => {
+    if (!menuId) return;
+    function onPointer(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuId(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenuId(null);
+    }
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuId]);
+
+  useEffect(() => {
+    if (!renamingId) return;
+    renameRef.current?.focus();
+    renameRef.current?.select();
+  }, [renamingId]);
 
   async function confirmDelete() {
     if (!target) return;
@@ -756,14 +808,35 @@ function ConversationHistory({
     setPendingId(null);
   }
 
-  async function confirmRename() {
-    if (!renamingTarget) return;
+  function beginRename(item: Conversation) {
+    setMenuId(null);
+    setRenameError(null);
+    setRenameValue(item.title === copy.chat.untitled ? "" : item.title);
+    setRenamingId(item.id);
+  }
+
+  function cancelRename() {
+    ignoreBlur.current = true;
+    setRenamingId(null);
+    setRenameError(null);
+  }
+
+  async function commitRename(id: string) {
+    const cleaned = renameValue.trim().replace(/\s+/g, " ");
+    // Un titre vide restaure le titre précédent, sans écriture.
+    if (!cleaned) {
+      setRenamingId(null);
+      setRenameError(null);
+      return;
+    }
     setRenaming(true);
     setRenameError(null);
-    const result = await onRename(renamingTarget.id, renameValue);
+    const result = await onRename(id, cleaned);
     setRenaming(false);
     if (!result.ok) {
       setRenameError(result.error);
+      setActionError(result.error);
+      setRenamingId(null);
       return;
     }
     setRenamingId(null);
@@ -789,42 +862,99 @@ function ConversationHistory({
         ) : (
           <ul className="flex flex-col gap-2">
             {conversations.map((item) => (
-              <li key={item.id} className="flex items-center gap-1">
-                <Tooltip label={copy.chat.tipOpenConversation} className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    onClick={() => onSelect(item.id)}
-                    className={`w-full rounded-surface px-4 py-3 text-left text-sm font-medium ${
-                      item.id === activeId
-                        ? "neo-pressed text-content"
-                        : "text-content-muted hover:text-content"
-                    }`}
-                  >
-                    <span className="block truncate">{item.title}</span>
-                  </button>
-                </Tooltip>
+              <li
+                key={item.id}
+                ref={menuId === item.id ? menuRef : undefined}
+                className="relative flex items-center gap-1"
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  if (renamingId === item.id) return;
+                  setMenuId(item.id);
+                }}
+              >
+                {renamingId === item.id ? (
+                  <div className="min-w-0 flex-1">
+                    <TextField
+                      id={`rename-${item.id}`}
+                      label={copy.chat.renameConversationLabel}
+                      hint={copy.chat.renameConversationHint}
+                      value={renameValue}
+                      error={renameError ?? undefined}
+                      maxLength={80}
+                      disabled={renaming}
+                      controlRef={renameRef}
+                      autoComplete="off"
+                      onChange={(event) => setRenameValue(event.target.value)}
+                      onBlur={() => {
+                        if (ignoreBlur.current) {
+                          ignoreBlur.current = false;
+                          return;
+                        }
+                        void commitRename(item.id);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          cancelRename();
+                        }
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          ignoreBlur.current = true;
+                          void commitRename(item.id);
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <Tooltip label={copy.chat.tipOpenConversation} className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => onSelect(item.id)}
+                      className={`w-full rounded-surface px-4 py-3 text-left text-sm font-medium ${
+                        item.id === activeId
+                          ? "neo-pressed text-content"
+                          : "text-content-muted hover:text-content"
+                      }`}
+                    >
+                      <span className="block truncate">{item.title}</span>
+                    </button>
+                  </Tooltip>
+                )}
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label={copy.chat.renameConversation}
-                  tooltip={copy.chat.tipRenameConversation}
-                  onClick={() => {
-                    setRenamingId(item.id);
-                    setRenameValue(item.title === copy.chat.untitled ? "" : item.title);
-                    setRenameError(null);
-                  }}
+                  aria-label={copy.chat.conversationActions}
+                  aria-expanded={menuId === item.id}
+                  tooltip={copy.chat.tipConversationActions}
+                  onClick={() => setMenuId((current) => (current === item.id ? null : item.id))}
                 >
-                  <IconPencil />
+                  <IconMore />
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={copy.chat.deleteConversation}
-                  tooltip={copy.chat.tipDeleteConversation}
-                  onClick={() => setPendingId(item.id)}
-                >
-                  <IconTrash />
-                </Button>
+                {menuId === item.id ? (
+                  <div className="absolute right-0 top-full z-20 mt-1 w-44">
+                    <Surface elevation="raised" radius="surface" className="flex flex-col p-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="justify-start"
+                        onClick={() => beginRename(item)}
+                      >
+                        {copy.chat.renameConversation}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="justify-start"
+                        onClick={() => {
+                          setMenuId(null);
+                          setPendingId(item.id);
+                        }}
+                      >
+                        {copy.chat.deleteConversation}
+                      </Button>
+                    </Surface>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -840,48 +970,6 @@ function ConversationHistory({
           {copy.chat.memoryOpen}
         </Button>
       </div>
-      {renamingTarget ? (
-        <Dialog
-          open
-          title={copy.chat.renameConversationTitle}
-          onClose={() => {
-            if (!renaming) setRenamingId(null);
-          }}
-        >
-          <form
-            className="mt-4 flex flex-col gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void confirmRename();
-            }}
-          >
-            <TextField
-              id="rename-conversation"
-              label={copy.chat.renameConversationLabel}
-              hint={copy.chat.renameConversationHint}
-              value={renameValue}
-              error={renameError ?? undefined}
-              onChange={(event) => setRenameValue(event.target.value)}
-              autoComplete="off"
-            />
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={renaming}
-                onClick={() => setRenamingId(null)}
-              >
-                {copy.admin.confirm.cancel}
-              </Button>
-              <Button type="submit" pending={renaming}>
-                {renaming
-                  ? copy.chat.renameConversationPending
-                  : copy.chat.renameConversationConfirm}
-              </Button>
-            </div>
-          </form>
-        </Dialog>
-      ) : null}
       {target ? (
         <ConfirmDialog
           open

@@ -9,45 +9,98 @@ import {
   HeightRule,
   ImageRun,
   LevelFormat,
+  LineRuleType,
   Packer,
   PageNumber,
   Paragraph,
   ShadingType,
   Table,
   TableCell,
+  TableOfContents,
   TableRow,
   TextRun,
   WidthType,
 } from "docx";
+import { renderChartPng } from "@/lib/server/chart-png";
 import { defaultDna, fitLogo, wordFont, type DesignDna } from "@/lib/server/design-dna";
-import type { DocumentSpec } from "@/lib/server/document-spec";
+import { BRAND, type DocumentSpec } from "@/lib/server/document-spec";
+import { isLong } from "@/lib/server/document-process";
+import { parseInline, plainInline } from "@/lib/server/rich-text";
 
 const CONTENT_WIDTH = 9638;
+const BODY_SPACING = { after: 160, line: 276, lineRule: LineRuleType.AUTO };
 
 export async function buildDocx(spec: DocumentSpec, dna: DesignDna = defaultDna()): Promise<Uint8Array> {
   const font = wordFont(dna.headingFont);
   const content: (Paragraph | Table)[] = [];
 
-  for (const section of spec.sections) {
+  const bodyFont = wordFont(dna.bodyFont);
+  if (isLong(spec)) {
     content.push(
       new Paragraph({
         heading: HeadingLevel.HEADING_1,
         spacing: { before: 280, after: 140 },
-        children: [new TextRun({ text: section.title, bold: true, color: dna.primary, font })],
+        children: [new TextRun({ text: "Plan", color: dna.primary, font })],
       }),
     );
-    for (const paragraph of section.body) {
-      content.push(...wordLines(paragraph, { size: 22, color: dna.text, font: wordFont(dna.bodyFont) }));
-    }
-    for (const item of section.bullets) {
+    for (const section of spec.sections) {
       content.push(
         new Paragraph({
-          numbering: { reference: "ubuntu-bullets", level: 0 },
-          spacing: { after: 80 },
-          children: [new TextRun({ text: item, color: dna.text, size: 22, font: wordFont(dna.bodyFont) })],
+          numbering: { reference: "ubuntu-numbers", level: 0 },
+          spacing: BODY_SPACING,
+          children: [new TextRun({ text: section.title, color: dna.text, size: 22, font: bodyFont })],
         }),
       );
     }
+  }
+  if (spec.sections.length >= 3) {
+    content.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        spacing: { before: 280, after: 140 },
+        children: [new TextRun({ text: "Sommaire", color: dna.primary, font })],
+      }),
+      new TableOfContents("Sommaire", { hyperlink: true, headingStyleRange: "1-3" }),
+    );
+  }
+  for (const section of spec.sections) {
+    content.push(
+      new Paragraph({
+        heading: headingFor(section.level),
+        spacing: { before: section.level === 3 ? 180 : 280, after: 140, line: 276, lineRule: LineRuleType.AUTO },
+        children: [new TextRun({ text: section.title, color: dna.primary, font })],
+      }),
+    );
+    if (section.quote) {
+      content.push(
+        new Paragraph({
+          spacing: { before: 120, after: 160 },
+          border: { left: { style: BorderStyle.SINGLE, size: 18, color: dna.accent, space: 8 } },
+          children: richRuns(section.quote, { size: 24, color: dna.primary, italics: true, font: bodyFont }),
+        }),
+      );
+    }
+    for (const paragraph of section.body) {
+      content.push(...wordLines(paragraph, { size: 22, color: dna.text, font: bodyFont }));
+    }
+    section.bullets.forEach((item, index) => {
+      content.push(
+        new Paragraph({
+          numbering: { reference: "ubuntu-bullets", level: section.bulletDepth?.[index] ? 1 : 0 },
+          spacing: { after: 80 },
+          children: richRuns(item, { size: 22, color: dna.text, font: bodyFont }),
+        }),
+      );
+    });
+    (section.numbered ?? []).forEach((item) => {
+      content.push(
+        new Paragraph({
+          numbering: { reference: "ubuntu-numbers", level: 0 },
+          spacing: { after: 80 },
+          children: richRuns(item, { size: 22, color: dna.text, font: bodyFont }),
+        }),
+      );
+    });
     if (section.table) {
       content.push(wordTable(section.table.headers, section.table.rows, dna));
       content.push(new Paragraph({ text: "" }));
@@ -57,7 +110,20 @@ export async function buildDocx(spec: DocumentSpec, dna: DesignDna = defaultDna(
         new Paragraph({
           heading: HeadingLevel.HEADING_2,
           spacing: { before: 200, after: 120 },
-          children: [new TextRun({ text: section.chart.title, bold: true, color: dna.accent, font })],
+          children: richRuns(section.chart.title, { size: 26, color: dna.accent, bold: true, font }),
+        }),
+      );
+      const png = renderChartPng(section.chart, dna.chartColors);
+      content.push(
+        new Paragraph({
+          spacing: { after: 160 },
+          children: [
+            new ImageRun({
+              type: "png",
+              data: png,
+              transformation: { width: 520, height: 274 },
+            }),
+          ],
         }),
       );
       const headers = ["Catégorie", ...section.chart.series.map((item) => item.name)];
@@ -86,17 +152,40 @@ export async function buildDocx(spec: DocumentSpec, dna: DesignDna = defaultDna(
               alignment: AlignmentType.LEFT,
               style: { paragraph: { indent: { left: 720, hanging: 360 } } },
             },
+            {
+              level: 1,
+              format: LevelFormat.BULLET,
+              text: "\u2013",
+              alignment: AlignmentType.LEFT,
+              style: { paragraph: { indent: { left: 1080, hanging: 360 } } },
+            },
+          ],
+        },
+        {
+          reference: "ubuntu-numbers",
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.DECIMAL,
+              text: "%1.",
+              alignment: AlignmentType.LEFT,
+              style: { paragraph: { indent: { left: 720, hanging: 360 } } },
+            },
           ],
         },
       ],
     },
     sections: [
-      {
-        properties: {
-          page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } },
-        },
-        children: [coverTable(spec, dna)],
-      },
+      ...(spec.design?.couverture === false
+        ? []
+        : [
+            {
+              properties: {
+                page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } },
+              },
+              children: [coverTable(spec, dna)],
+            },
+          ]),
       {
         properties: {
           page: { margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 } },
@@ -109,10 +198,7 @@ export async function buildDocx(spec: DocumentSpec, dna: DesignDna = defaultDna(
                   bottom: { style: BorderStyle.SINGLE, size: 12, color: dna.accent, space: 6 },
                 },
                 spacing: { after: 200 },
-                children: [
-                  new TextRun({ text: dna.headerLabel?.slice(0, 40) || "Ubuntu IA", bold: true, color: dna.primary, size: 20, font }),
-                  new TextRun({ text: "  ·  SOFICAU Ubuntu Group", color: dna.accent, size: 20, font }),
-                ],
+                children: headerRuns(spec, dna, font),
               }),
             ],
           }),
@@ -170,19 +256,25 @@ function coverTable(spec: DocumentSpec, dna: DesignDna): Table {
                     }),
                   ]
                 : []),
-              new Paragraph({
-                spacing: { after: 200 },
-                children: [
-                  new TextRun({ text: "UBUNTU IA", bold: true, color: dna.accent, size: 22 }),
-                ],
-              }),
+              ...(marks(spec, dna).eyebrow
+                ? [
+                    new Paragraph({
+                      spacing: { after: 200 },
+                      children: [
+                        new TextRun({ text: marks(spec, dna).eyebrow, bold: true, color: dna.accent, size: 22 }),
+                      ],
+                    }),
+                  ]
+                : []),
               ...wordLines(spec.title, { size: 56, color: "FFFFFF", bold: true }),
-              ...wordLines(spec.subtitle || "SOFICAU Ubuntu Group", { size: 24, color: dna.accent }),
+              ...wordLines(spec.subtitle || marks(spec, dna).signature || "Ubuntu IA", { size: 24, color: dna.accent }),
               new Paragraph({
                 spacing: { before: 800 },
                 children: [
                   new TextRun({
-                    text: "Document professionnel généré pour SOFICAU Ubuntu Group",
+                    text: marks(spec, dna).signature
+                      ? `Document généré par Ubuntu IA pour ${marks(spec, dna).signature}`
+                      : "Document généré par Ubuntu IA",
                     color: "DCE6EC",
                     size: 20,
                   }),
@@ -219,6 +311,63 @@ function wordTable(headers: string[], rows: string[][], dna: DesignDna): Table {
   });
 }
 
+function marks(spec: DocumentSpec, dna: DesignDna): { eyebrow: string; signature: string } {
+  const brand =
+    dna.primary.toUpperCase() === BRAND.navy &&
+    dna.accent.toUpperCase() === BRAND.gold &&
+    !dna.headerLabel &&
+    !dna.sourceName;
+  return {
+    eyebrow: spec.design?.marque?.trim() || dna.headerLabel?.trim() || (brand ? "UBUNTU IA" : ""),
+    signature: spec.design?.signature?.trim() || (brand ? "SOFICAU Ubuntu Group" : dna.sourceName || ""),
+  };
+}
+
+function headerRuns(spec: DocumentSpec, dna: DesignDna, font: string): TextRun[] {
+  const label = marks(spec, dna);
+  const runs: TextRun[] = [];
+  if (label.eyebrow) {
+    runs.push(new TextRun({ text: label.eyebrow.slice(0, 40), bold: true, color: dna.primary, size: 20, font }));
+  }
+  if (label.signature) {
+    runs.push(
+      new TextRun({
+        text: `${label.eyebrow ? "  ·  " : ""}${label.signature}`,
+        color: dna.accent,
+        size: 20,
+        font,
+      }),
+    );
+  }
+  if (!runs.length) runs.push(new TextRun({ text: "Ubuntu IA", bold: true, color: dna.primary, size: 20, font }));
+  return runs;
+}
+
+function headingFor(level: 1 | 2 | 3 | undefined): (typeof HeadingLevel)[keyof typeof HeadingLevel] {
+  if (level === 2) return HeadingLevel.HEADING_2;
+  if (level === 3) return HeadingLevel.HEADING_3;
+  return HeadingLevel.HEADING_1;
+}
+
+function richRuns(
+  text: string,
+  run: { size: number; color: string; bold?: boolean; italics?: boolean; font?: string },
+): TextRun[] {
+  const parts = parseInline(text);
+  const source = parts.length ? parts : [{ text }];
+  return source.map(
+    (part) =>
+      new TextRun({
+        text: part.text,
+        bold: run.bold || part.bold,
+        italics: run.italics || part.italic,
+        color: run.color,
+        size: run.size,
+        font: run.font,
+      }),
+  );
+}
+
 function wordLines(
   text: string,
   run: { size: number; color: string; bold?: boolean; font?: string },
@@ -227,10 +376,10 @@ function wordLines(
   const source = lines.length ? lines : [text];
   return source.map(
     (line) =>
-      new Paragraph({
-        spacing: { after: 160 },
-        children: [new TextRun({ text: line, ...run })],
-      }),
+        new Paragraph({
+          spacing: BODY_SPACING,
+          children: richRuns(line, run),
+        }),
   );
 }
 
@@ -247,7 +396,7 @@ function wordCell(text: string, width: number, header: boolean, dna: DesignDna, 
       new Paragraph({
         children: [
           new TextRun({
-            text: text || " ",
+            text: plainInline(text) || " ",
             bold: header,
             color: header ? dna.inverse : dna.text,
             size: 20,

@@ -225,27 +225,36 @@ export function hexRgb(value: string): { r: number; g: number; b: number } {
   };
 }
 
+const OFFICE_FONTS = [
+  "Calibri",
+  "Cambria",
+  "Arial",
+  "Times New Roman",
+  "Georgia",
+  "Garamond",
+  "Trebuchet MS",
+  "Verdana",
+  "Tahoma",
+  "Consolas",
+  "Aptos",
+  "Poppins",
+  "Montserrat",
+  "Carlito",
+  "Liberation Sans",
+];
+
 export function pptFont(name: string): string {
-  const lower = name.toLowerCase();
-  if (lower.includes("cambria")) return "Cambria";
-  if (lower.includes("calibri")) return "Calibri";
-  return "Arial";
+  return officeFont(name, "Calibri");
 }
 
 export function wordFont(name: string): string {
-  const allowed = [
-    "Calibri",
-    "Cambria",
-    "Arial",
-    "Times New Roman",
-    "Georgia",
-    "Garamond",
-    "Trebuchet MS",
-    "Verdana",
-    "Tahoma",
-    "Consolas",
-  ];
-  return allowed.find((item) => item.toLowerCase() === name.toLowerCase()) ?? "Calibri";
+  return officeFont(name, "Calibri");
+}
+
+function officeFont(name: string, fallback: string): string {
+  const cleaned = name.replace(/[^\p{L}\p{N} \-]/gu, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return fallback;
+  return OFFICE_FONTS.find((item) => item.toLowerCase() === cleaned.toLowerCase()) ?? cleaned.slice(0, 40);
 }
 
 export function formatFromName(name: string, mime = ""): StyleFormat {

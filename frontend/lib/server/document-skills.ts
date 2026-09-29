@@ -27,21 +27,27 @@ const COMPANIONS: Record<string, string[]> = {
 const FALLBACK_BRIDGE = `
 # Livrables fichiers Ubuntu IA (skills Claude Office)
 
+Processus obligatoire, avant d'écrire le moindre fichier :
+1. Consulter le guide du format (docx, pptx, xlsx, pdf). Ne jamais sauter cette étape.
+2. Document court (moins de 100 éléments) : un seul bloc. Document long : plan, puis section par section ou slide par slide, puis assemblage dans le même ubuntu-ia-doc.
+3. Word : styles Titre 1 à 3, une police de titres et une de corps, marges et interligne homogènes, images aux bonnes proportions. PowerPoint : un masque, peu de lignes, contraste vérifié. Excel : formules calculées, tableaux structurés, mise en forme conditionnelle. PDF : génération directe ou remplissage de formulaire, sans conversion externe. Page web : HTML autonome, CSS inclus, sans dépendance externe.
+4. Le moteur écrit dans un dossier temporaire, copie vers la sortie, puis présente un lien. Une page web s'ouvre dans le navigateur.
+
 Source workflows : claude-office-skills (PPTX, DOCX, XLSX, PDF) + pont Ubuntu IA.
 
 Trois couches : CONTENU (texte, chiffres, formules — intacts) ; STRUCTURE (titres, sections, tableaux, diapositives — respectée) ; HABILLAGE (couleurs, polices, logos — seul libre).
 
 Pipeline : classer STYLE vs CONTENU ; extraire la charte (design-dna) ; appliquer l'habillage ; nettoyer la spec ; vérifier la non-régression. Un PDF/image est figé : style seulement, jamais réinjecter son texte.
 
-Spec : markdown + fence ubuntu-ia-doc → { title, subtitle, sections, charts, design }. Graphes uniquement si chiffres déjà présents. design : primaire, accent, fond, texte, policeTitre, policeCorps (hex sans #).
+Spec : le texte visible de la réponse est le document. Un fence ubuntu-ia-doc incomplet (titre et design seulement) ne remplace pas ce texte. markdown + fence → { title, subtitle, sections, charts, indicateurs, design }. Chaque section peut avoir niveau 1-3, puces, numerotation, citation, graphe, tableau, miseEnPage (copy, cards, stats, table, chart, timeline, compare, quote, divider, image). Graphes uniquement si chiffres déjà présents. design : primaire, accent, fond, texte, policeTitre, policeCorps, couverture, conclusion, motif, ratio (16:9, 16:10, 4:3), marque, signature.
 
-Word : HeadingLevel ; listes via numbering BULLET (jamais • littéral) ; tableaux WidthType.DXA ; ShadingType.CLEAR ; pas de \\n dans un paragraphe ; page de garde marine ; tracked changes / OOXML si édition.
+Word : HeadingLevel 1 à 3 ; listes numbering BULLET et DECIMAL ; **gras** conservé ; tableaux WidthType.DXA ; graphe = figure PNG + tableau de données ; page de garde optionnelle.
 
-PowerPoint : layout avant slides ; canvas 10"×5.625" ; hex sans # ; bullet: true ; graphes addChart ; palette 17405B, AD8859, 3D6A82, C4A574 ; sandwich couverture/conclusion marines, contenu canvas E8EEF2 ; synthèse texte→diapositives assumée ; HTML-to-PPTX pour mises en page riches.
+PowerPoint : le moteur pagine (pas de coupure à 8 lignes) et honore miseEnPage. Graphes natifs. Polices demandées conservées, y compris Poppins. Couverture et conclusion seulement si design ne les désactive pas. Synthèse texte→diapositives signalée, contenu conservé sur les slides suivantes.
 
-Excel : Arial ; totaux en formules SUM ; feuille Synthèse + données sur classeur neuf ; classeur existant restylé sans toucher valeurs/formules ; modèles financiers zéro erreur.
+Excel : totaux SUM seulement sur les colonnes de mesures (pas les années, identifiants, taux). Graphique natif sous les séries. Feuille Synthèse avec indicateurs explicites s'ils sont fournis. Classeur existant restylé sans toucher valeurs/formules.
 
-PDF : garde marine + cercles or ; pages contenu canvas ; Helvetica/WinAnsi ; formulaires / fusion si demandé.
+PDF : accents français conservés (WinAnsi) ; tableaux complets ; graphe en image + données. Motif décoratif désactivable.
 
 Marque : marine 17405B, or AD8859, canvas E8EEF2.
 `.trim();

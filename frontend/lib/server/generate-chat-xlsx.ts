@@ -3,6 +3,8 @@ import ExcelJS from "exceljs";
 import type { PreparedAttachment } from "@/lib/server/chat-attachments";
 import { argb, defaultDna, type DesignDna } from "@/lib/server/design-dna";
 import type { DocumentSpec } from "@/lib/server/document-spec";
+import { columnShouldSum, embedSheetCharts, type SheetChart } from "@/lib/server/xlsx-chart";
+import { plainInline } from "@/lib/server/rich-text";
 
 type SheetColors = {
   navy: string;
@@ -55,6 +57,8 @@ export async function buildXlsx(
     writeDashboard(workbook, spec, colors);
   }
 
+  const charts: SheetChart[] = [];
+  const measures: { formula: string; label: string }[] = [];
   spec.sections.forEach((section, index) => {
     if (!section.table && !section.chart) return;
     const name =
@@ -62,25 +66,78 @@ export async function buildXlsx(
         ? sheetName(`${section.title} donnees`, index)
         : sheetName(section.title, index);
     const existing = workbook.getWorksheet(name);
-    if (loaded && existing) return;
-    const sheet = existing ?? workbook.addWorksheet(name);
-    if (section.table) writeDataSheet(sheet, section.title, section.table.headers, section.table.rows, colors);
-    else if (section.chart) {
-      const headers = [section.chart.title, ...section.chart.series.map((item) => item.name)];
-      const rows = section.chart.categories.map((category, rowIndex) => [
-        category,
-        ...section.chart!.series.map((item) => String(item.values[rowIndex] ?? "")),
-      ]);
-      writeDataSheet(sheet, section.title, headers, rows, colors);
+    if (!(loaded && existing)) {
+      const sheet = existing ?? workbook.addWorksheet(name);
+      if (section.table) {
+        const written = writeDataSheet(sheet, section.title, section.table.headers, section.table.rows, colors, index + 1);
+        if (written.measureFormula) measures.push({ formula: written.measureFormula, label: section.title });
+      }
+      else if (section.chart) {
+        const headers = [section.chart.title, ...section.chart.series.map((item) => item.name)];
+        const rows = section.chart.categories.map((category, rowIndex) => [
+          category,
+          ...section.chart!.series.map((item) => String(item.values[rowIndex] ?? "")),
+        ]);
+        const written = writeDataSheet(sheet, section.title, headers, rows, colors, index + 1);
+        if (written.measureFormula) measures.push({ formula: written.measureFormula, label: section.title });
+        charts.push({
+          sheetName: sheet.name,
+          title: section.chart.title,
+          kind: section.chart.kind,
+          headerRow: 3,
+          firstDataRow: 4,
+          lastDataRow: 3 + written.rows,
+          categoryCol: 1,
+          seriesCols: section.chart.series.map((_, seriesIndex) => seriesIndex + 2),
+          anchorRow: 3 + written.rows + 2,
+          colors: dna.chartColors,
+        });
+      }
+    }
+    if (section.table && section.chart) {
+      const chartName = sheetName(`${section.title} graphe`, index + 20);
+      if (!workbook.getWorksheet(chartName)) {
+        const sheet = workbook.addWorksheet(chartName);
+        const headers = [section.chart.title, ...section.chart.series.map((item) => item.name)];
+        const rows = section.chart.categories.map((category, rowIndex) => [
+          category,
+          ...section.chart!.series.map((item) => String(item.values[rowIndex] ?? "")),
+        ]);
+        const written = writeDataSheet(sheet, section.chart.title, headers, rows, colors, index + 21);
+        if (written.measureFormula) measures.push({ formula: written.measureFormula, label: section.chart.title });
+        charts.push({
+          sheetName: sheet.name,
+          title: section.chart.title,
+          kind: section.chart.kind,
+          headerRow: 3,
+          firstDataRow: 4,
+          lastDataRow: 3 + written.rows,
+          categoryCol: 1,
+          seriesCols: section.chart.series.map((_, seriesIndex) => seriesIndex + 2),
+          anchorRow: 3 + written.rows + 2,
+          colors: dna.chartColors,
+        });
+      }
     }
   });
 
   if (workbook.worksheets.length === 0) {
     workbook.addWorksheet("Ubuntu IA").getCell("A1").value = spec.title;
   }
+  if (!spec.kpis?.length && measures.length) {
+    const board = workbook.getWorksheet("Synthèse");
+    measures.slice(0, 4).forEach((item, index) => {
+      const column = String.fromCharCode(66 + index);
+      const label = board?.getCell(`${column}5`);
+      const value = board?.getCell(`${column}6`);
+      if (label) label.value = item.label.slice(0, 28);
+      if (value) value.value = { formula: item.formula };
+    });
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  return new Uint8Array(buffer);
+  const bytes = new Uint8Array(buffer);
+  return embedSheetCharts(bytes, charts.filter((chart) => chart.lastDataRow >= chart.firstDataRow));
 }
 
 function restyleExistingSheets(workbook: ExcelJS.Workbook, colors: SheetColors) {
@@ -152,7 +209,7 @@ function writeDashboard(workbook: ExcelJS.Workbook, spec: DocumentSpec, colors: 
     align: "left",
   }, colors);
 
-  const kpis = dashboardKpis(spec);
+  const kpis = spec.kpis?.length ? spec.kpis.slice(0, 3) : dashboardKpis(spec);
   kpis.forEach((kpi, index) => {
     const col = 2 + index * 2;
     const letter = colLetter(col);
@@ -184,7 +241,7 @@ function writeDashboard(workbook: ExcelJS.Workbook, spec: DocumentSpec, colors: 
     row += 1;
   });
 
-  sheet.getCell("B28").value = "Source : contenu validé dans la conversation Ubuntu IA. Les totaux des feuilles de données sont des formules SUM.";
+  sheet.getCell("B28").value = "Source : contenu validé dans la conversation Ubuntu IA. Les totaux SUM ne portent que sur les colonnes de mesures.";
   styleCell(sheet.getCell("B28"), { size: 9, color: colors.gold }, colors);
 }
 
@@ -194,8 +251,8 @@ function writeDataSheet(
   headers: string[],
   rows: string[][],
   colors: SheetColors,
-) {
-  sheet.spliceRows(1, sheet.rowCount || 1);
+  tableIndex: number,
+): { rows: number; measureFormula?: string } {
   sheet.views = [{ state: "frozen", ySplit: 3, showGridLines: false }];
   const lastCol = Math.max(1, headers.length);
   sheet.mergeCells(1, 1, 1, lastCol);
@@ -204,45 +261,98 @@ function writeDataSheet(
   styleCell(titleCell, { bold: true, size: 16, color: colors.white, fill: colors.navy, align: "left" }, colors);
   sheet.getRow(1).height = 28;
 
-  const header = sheet.getRow(3);
-  headers.forEach((name, index) => {
-    const cell = header.getCell(index + 1);
-    cell.value = name;
-    styleCell(cell, { bold: true, size: 11, color: colors.white, fill: colors.navy, align: "center" }, colors);
-    sheet.getColumn(index + 1).width = index === 0 ? 28 : 16;
-  });
-
-  rows.forEach((line, rowIndex) => {
-    const excelRow = sheet.getRow(4 + rowIndex);
-    headers.forEach((_, colIndex) => {
-      const raw = line[colIndex] ?? "";
-      const numeric = toNumber(raw);
-      const cell = excelRow.getCell(colIndex + 1);
-      cell.value = numeric ?? raw;
-      styleCell(cell, {
-        size: 11,
-        color: colors.navy,
-        fill: rowIndex % 2 === 0 ? colors.white : colors.canvas,
-        align: colIndex === 0 ? "left" : "center",
-      }, colors);
+  const unique = headers.map((header, index) => {
+    const base = (plainInline(header).replace(/[\][]/g, " ").trim() || `Colonne ${index + 1}`).slice(0, 40);
+    const taken = headers.slice(0, index).some((item, prior) => {
+      const other = (plainInline(item).replace(/[\][]/g, " ").trim() || `Colonne ${prior + 1}`).slice(0, 40);
+      return other === base;
     });
+    return taken ? `${base} ${index + 1}`.slice(0, 40) : base;
   });
-
-  const firstData = 4;
-  const lastData = 3 + rows.length;
-  if (rows.length >= 2 && lastCol >= 2) {
-    const totalRow = lastData + 1;
-    sheet.getCell(totalRow, 1).value = "Total";
-    styleCell(sheet.getCell(totalRow, 1), { bold: true, size: 11, color: colors.white, fill: colors.gold }, colors);
-    for (let col = 2; col <= lastCol; col += 1) {
-      const letter = colLetter(col);
-      const values = rows.map((line) => toNumber(line[col - 1]));
-      if (values.every((value) => value === null)) continue;
-      const cell = sheet.getCell(totalRow, col);
-      cell.value = { formula: `SUM(${letter}${firstData}:${letter}${lastData})` };
-      styleCell(cell, { bold: true, size: 11, color: colors.white, fill: colors.gold, align: "center" }, colors);
+  const tableRows = rows.map((line) =>
+    unique.map((_, colIndex) => {
+      const raw = plainInline(line[colIndex] ?? "");
+      return toNumber(raw) ?? raw;
+    }),
+  );
+  const summable = unique.map((header, index) =>
+    index === 0 ? false : columnShouldSum(header, rows.map((line) => toNumber(plainInline(line[index] ?? "")))),
+  );
+  const tableName = `Donnees${tableIndex}`;
+  let tableOk = false;
+  try {
+    sheet.addTable({
+      name: tableName,
+      ref: "A3",
+      headerRow: true,
+      totalsRow: summable.some(Boolean),
+      style: { theme: "TableStyleMedium2", showRowStripes: true },
+      columns: unique.map((name, index) => ({
+        name,
+        totalsRowLabel: index === 0 ? "Total" : undefined,
+        totalsRowFunction: summable[index] ? "sum" : "none",
+        filterButton: true,
+      })),
+      rows: tableRows,
+    });
+    tableOk = true;
+    if (rows.length && summable.some(Boolean) && unique.length > 1) {
+      sheet.addConditionalFormatting({
+        ref: `B4:${colLetter(unique.length)}${3 + rows.length}`,
+        rules: [
+          {
+            type: "colorScale",
+            priority: 1,
+            cfvo: [{ type: "min" }, { type: "max" }],
+            color: [{ argb: colors.canvas }, { argb: colors.navy }],
+          },
+        ],
+      });
+    }
+  } catch (error) {
+    console.error("[chat] excel table", error);
+    const header = sheet.getRow(3);
+    unique.forEach((name, index) => {
+      const cell = header.getCell(index + 1);
+      cell.value = name;
+      styleCell(cell, { bold: true, size: 11, color: colors.white, fill: colors.navy, align: "center" }, colors);
+      sheet.getColumn(index + 1).width = index === 0 ? 28 : 16;
+    });
+    tableRows.forEach((line, rowIndex) => {
+      const excelRow = sheet.getRow(4 + rowIndex);
+      line.forEach((value, colIndex) => {
+        const cell = excelRow.getCell(colIndex + 1);
+        cell.value = value;
+        styleCell(cell, {
+          size: 11,
+          color: colors.navy,
+          fill: rowIndex % 2 === 0 ? colors.white : colors.canvas,
+          align: colIndex === 0 ? "left" : "center",
+        }, colors);
+      });
+    });
+    if (rows.length >= 2 && summable.some(Boolean)) {
+      const totalRow = 4 + rows.length;
+      sheet.getCell(totalRow, 1).value = "Total";
+      styleCell(sheet.getCell(totalRow, 1), { bold: true, size: 11, color: colors.white, fill: colors.gold }, colors);
+      summable.forEach((ok, index) => {
+        if (!ok) return;
+        const cell = sheet.getCell(totalRow, index + 1);
+        const letter = colLetter(index + 1);
+        cell.value = { formula: `SUM(${letter}4:${letter}${totalRow - 1})` };
+        styleCell(cell, { bold: true, size: 11, color: colors.white, fill: colors.gold, align: "center" }, colors);
+      });
     }
   }
+  unique.forEach((_, index) => {
+    sheet.getColumn(index + 1).width = index === 0 ? 28 : 16;
+  });
+  const first = summable.findIndex(Boolean);
+  return {
+    rows: rows.length,
+    measureFormula:
+      tableOk && first >= 0 ? `SUM(${tableName}[${unique[first]}])` : undefined,
+  };
 }
 
 function dashboardKpis(spec: DocumentSpec): { value: string; label: string }[] {

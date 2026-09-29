@@ -242,6 +242,16 @@ export function IconCopy({ className = base }: IconProps) {
   );
 }
 
+export function IconMore({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <circle cx="12" cy="6" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="12" cy="18" r="1.6" />
+    </svg>
+  );
+}
+
 export function IconPencil({ className = base }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>

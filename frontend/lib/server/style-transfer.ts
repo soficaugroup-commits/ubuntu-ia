@@ -97,7 +97,7 @@ export function specHasDataTables(spec: DocumentSpec): boolean {
 export function fingerprintSpec(spec: DocumentSpec): string[] {
   const parts = [spec.title, spec.subtitle];
   for (const section of spec.sections) {
-    parts.push(section.title, ...section.body, ...section.bullets);
+    parts.push(section.title, ...section.body, ...section.bullets, ...(section.numbered ?? []), section.quote ?? "");
     if (section.table) parts.push(...section.table.headers, ...section.table.rows.flat());
     if (section.chart) {
       parts.push(section.chart.title, ...section.chart.categories);
@@ -156,7 +156,12 @@ export function pickContentWorkbook(
 
 function cleanSection(section: DocSection): DocSection {
   const body = section.body.map((line) => line.trim()).filter(Boolean);
-  const bullets = section.bullets.map((line) => line.trim()).filter(Boolean);
+  const kept = section.bullets
+    .map((line, index) => ({ line: line.trim(), depth: section.bulletDepth?.[index] ?? 0 }))
+    .filter((item) => item.line);
+  const bullets = kept.map((item) => item.line);
+  const bulletDepth = kept.some((item) => item.depth > 0) ? kept.map((item) => item.depth) : undefined;
+  const numbered = section.numbered?.map((line) => line.trim()).filter(Boolean);
   const table =
     section.table && section.table.headers.some(Boolean) && section.table.rows.some((row) => row.some(Boolean))
       ? {
@@ -166,7 +171,16 @@ function cleanSection(section: DocSection): DocSection {
             .filter((row) => row.some(Boolean)),
         }
       : undefined;
-  return { ...section, title: section.title.trim(), body, bullets, table };
+  return {
+    ...section,
+    title: section.title.trim(),
+    body,
+    bullets,
+    bulletDepth,
+    numbered: numbered?.length ? numbered : undefined,
+    quote: section.quote?.trim() || undefined,
+    table,
+  };
 }
 
 function sectionHasContent(section: DocSection): boolean {
@@ -174,6 +188,8 @@ function sectionHasContent(section: DocSection): boolean {
     section.title ||
       section.body.length ||
       section.bullets.length ||
+      Boolean(section.numbered?.length) ||
+      Boolean(section.quote) ||
       section.table ||
       section.chart,
   );

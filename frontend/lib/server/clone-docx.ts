@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { defaultDna, type DesignDna } from "@/lib/server/design-dna";
 import type { DocumentSpec } from "@/lib/server/document-spec";
+import { parseInline } from "@/lib/server/rich-text";
 
 export async function cloneDocxWithSpec(
   template: Buffer,
@@ -15,10 +16,11 @@ export async function cloneDocxWithSpec(
   const styleIds = [...stylesXml.matchAll(/w:styleId="([^"]+)"/g)].map((match) => match[1]);
   const heading1 = pickStyle(styleIds, ["Heading1", "Titre1", "Title", "Titre"]);
   const heading2 = pickStyle(styleIds, ["Heading2", "Titre2"]);
+  const heading3 = pickStyle(styleIds, ["Heading3", "Titre3"]);
   const normal = pickStyle(styleIds, ["Normal", "Normal0"]) ?? "Normal";
   const list = pickStyle(styleIds, ["ListParagraph", "Paragraphedeliste", "ListBullet"]);
   const sectPr = /<w:sectPr[\s\S]*?<\/w:sectPr>/i.exec(original)?.[0] ?? "";
-  const body = buildBody(spec, { heading1, heading2, normal, list }, dna) + sectPr;
+  const body = buildBody(spec, { heading1, heading2, heading3, normal, list }, dna) + sectPr;
   const next = replaceBody(original, body);
   zip.file("word/document.xml", next);
   return zip.generateAsync({ type: "uint8array" });
@@ -43,17 +45,25 @@ function replaceBody(xml: string, inner: string): string {
 
 function buildBody(
   spec: DocumentSpec,
-  styles: { heading1?: string; heading2?: string; normal: string; list?: string },
+  styles: { heading1?: string; heading2?: string; heading3?: string; normal: string; list?: string },
   dna: DesignDna,
 ): string {
   const parts: string[] = [];
   parts.push(paragraph(spec.title, styles.heading1 ?? styles.normal));
   if (spec.subtitle) parts.push(paragraph(spec.subtitle, styles.normal));
   for (const section of spec.sections) {
-    parts.push(paragraph(section.title, styles.heading1 ?? styles.normal));
+    const heading =
+      section.level === 3
+        ? styles.heading3 ?? styles.heading2 ?? styles.heading1
+        : section.level === 2
+          ? styles.heading2 ?? styles.heading1
+          : styles.heading1;
+    parts.push(paragraph(section.title, heading ?? styles.normal));
+    if (section.quote) parts.push(paragraph(section.quote, styles.normal, true));
     for (const line of section.body) parts.push(paragraph(line, styles.normal));
-    for (const item of section.bullets) {
-      parts.push(paragraph(item, styles.list ?? styles.normal));
+    for (const item of section.bullets) parts.push(paragraph(item, styles.list ?? styles.normal));
+    for (const [index, item] of (section.numbered ?? []).entries()) {
+      parts.push(paragraph(`${index + 1}. ${item}`, styles.normal));
     }
     if (section.table) parts.push(tableXml(section.table.headers, section.table.rows, dna));
     if (section.chart) {
@@ -69,13 +79,18 @@ function buildBody(
   return parts.join("");
 }
 
-function paragraph(text: string, style: string): string {
-  return (
-    `<w:p>` +
-    `<w:pPr><w:pStyle w:val="${esc(style)}"/></w:pPr>` +
-    `<w:r><w:t xml:space="preserve">${esc(text)}</w:t></w:r>` +
-    `</w:p>`
-  );
+function paragraph(text: string, style: string, italic = false): string {
+  const runs = parseInline(text);
+  const source = runs.length ? runs : [{ text, bold: false, italic: false }];
+  const body = source
+    .map((part) => {
+      const bold = part.bold ? "<w:b/>" : "";
+      const emph = italic || part.italic ? "<w:i/>" : "";
+      const props = bold || emph ? `<w:rPr>${bold}${emph}</w:rPr>` : "";
+      return `<w:r>${props}<w:t xml:space="preserve">${esc(part.text)}</w:t></w:r>`;
+    })
+    .join("");
+  return `<w:p><w:pPr><w:pStyle w:val="${esc(style)}"/></w:pPr>${body}</w:p>`;
 }
 
 function tableXml(headers: string[], rows: string[][], dna: DesignDna): string {

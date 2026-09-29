@@ -15,6 +15,119 @@ function isUrlLikeLabel(label: string): boolean {
   return /^[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/[\w./?%&=+-]*)?$/i.test(value);
 }
 
+const SPEC_FENCE = /```(?:ubuntu-ia-doc|json)\s*([\s\S]*?)```/gi;
+
+/** Retire le bloc technique de design. Le fichier l'utilise encore, le chat non. */
+export function stripDocumentSpec(content: string): string {
+  if (!content) return content;
+  return content
+    .replace(SPEC_FENCE, (full, body: string) => (isDocumentSpec(full, body) ? "" : full))
+    .replace(/```ubuntu-ia-doc[\s\S]*$/i, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isDocumentSpec(full: string, body: string): boolean {
+  if (/```ubuntu-ia-doc/i.test(full)) return true;
+  const text = body.trim();
+  if (!text.startsWith("{")) return false;
+  try {
+    const raw = JSON.parse(text) as Record<string, unknown>;
+    return Boolean(raw.design || raw.miseEnForme || raw.titre || raw.title || raw.sections || raw.primaire);
+  } catch {
+    return /"(?:design|miseEnForme|titre|title|primaire|policeTitre)"/.test(text);
+  }
+}
+
+/**
+ * Masque le bloc ubuntu-ia-doc au fil de l'eau, pour qu'il n'apparaisse pas pendant la frappe.
+ */
+export function createVisibleAnswerFilter() {
+  let hold = "";
+  let mode: "text" | "spec" | "maybe-json" | "code" = "text";
+
+  const take = (next: string) => {
+    hold = next;
+  };
+
+  return {
+    push(chunk: string): string {
+      hold += chunk;
+      let visible = "";
+      while (hold) {
+        if (mode === "text") {
+          const tick = hold.indexOf("```");
+          if (tick < 0) {
+            const trail = /`{1,2}$/.exec(hold);
+            if (trail) {
+              visible += hold.slice(0, -trail[0].length);
+              take(trail[0]);
+            } else {
+              visible += hold;
+              take("");
+            }
+            break;
+          }
+          visible += hold.slice(0, tick);
+          hold = hold.slice(tick);
+          const lineEnd = hold.indexOf("\n");
+          if (lineEnd < 0) break;
+          const lang = hold.slice(3, lineEnd).trim().toLowerCase();
+          if (lang === "ubuntu-ia-doc") {
+            mode = "spec";
+            hold = hold.slice(lineEnd + 1);
+          } else if (lang === "json") {
+            mode = "maybe-json";
+            hold = hold.slice(lineEnd + 1);
+          } else {
+            visible += hold.slice(0, lineEnd + 1);
+            hold = hold.slice(lineEnd + 1);
+            mode = "code";
+          }
+          continue;
+        }
+        const end = hold.indexOf("```");
+        if (mode === "code") {
+          if (end < 0) {
+            visible += hold;
+            take("");
+            break;
+          }
+          visible += hold.slice(0, end + 3);
+          hold = hold.slice(end + 3);
+          mode = "text";
+          continue;
+        }
+        if (end < 0) break;
+        const body = hold.slice(0, end);
+        if (mode === "maybe-json" && !isDocumentSpec("```json", body)) {
+          visible += `\`\`\`json\n${body}\`\`\``;
+        }
+        hold = hold.slice(end + 3);
+        mode = "text";
+      }
+      return visible;
+    },
+    finish(): string {
+      if (mode === "text" || mode === "code") {
+        const rest = hold;
+        hold = "";
+        mode = "text";
+        return rest;
+      }
+      if (mode === "maybe-json" && !isDocumentSpec("```json", hold)) {
+        const rest = `\`\`\`json\n${hold}`;
+        hold = "";
+        mode = "text";
+        return rest;
+      }
+      hold = "";
+      mode = "text";
+      return "";
+    },
+  };
+}
+
 export function stripInlineLinks(content: string): string {
   if (!content) return content;
   return content

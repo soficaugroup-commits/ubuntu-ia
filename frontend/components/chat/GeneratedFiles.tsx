@@ -58,6 +58,15 @@ export function GeneratedFiles({ files, images }: Props) {
                       {copy.chat.fileKind[file.format] ?? file.format.toUpperCase()}
                     </span>
                   </span>
+                  {file.format === "html" ? (
+                    <Button
+                      type="button"
+                      tooltip={copy.chat.tipOpenPage}
+                      onClick={() => window.open(file.url, "_blank", "noopener,noreferrer")}
+                    >
+                      {copy.chat.openPage}
+                    </Button>
+                  ) : null}
                   <DownloadLink
                     href={file.url}
                     name={file.name}

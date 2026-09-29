@@ -3,7 +3,7 @@
 import { Fragment, type ReactNode } from "react";
 import { Surface } from "@/components/ui/Surface";
 import { copy } from "@/content/fr";
-import { stripInlineLinks } from "@/lib/answer-text";
+import { stripDocumentSpec, stripInlineLinks } from "@/lib/answer-text";
 
 type Props = {
   content: string;
@@ -18,7 +18,7 @@ export function AnswerBody({ content, messageId, sourceCount, streaming = false 
       <span className="stream-caret" aria-label={copy.chat.streamCaret} />
     );
   }
-  const blocks = splitBlocks(stripInlineLinks(content));
+  const blocks = splitBlocks(stripDocumentSpec(stripInlineLinks(content)));
   return (
     <div className="flex flex-col gap-4 text-[0.95rem] leading-7 text-content">
       {blocks.map((block, index) => (
@@ -41,7 +41,7 @@ export function stripMarkdown(content: string): string {
 }
 
 export function answerPlainText(content: string): string {
-  return stripInlineLinks(content)
+  return stripDocumentSpec(stripInlineLinks(content))
     .replace(/\r\n/g, "\n")
     .replace(/```[\s\S]*?```/g, (block) =>
       block.replace(/```[^\n]*\n?/g, "").replace(/```/g, "").trim(),

@@ -85,6 +85,27 @@ export async function renameConversation(
   };
 }
 
+export async function suggestConversationTitle(
+  id: string,
+  question: string,
+): Promise<{ ok: true; title: string | null } | { ok: false }> {
+  try {
+    const response = await fetch(`/api/conversations/${id}/title`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authHeaders()),
+      },
+      body: JSON.stringify({ question }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { title?: string | null };
+    if (!response.ok) return { ok: false };
+    return { ok: true, title: body.title?.trim() || null };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function streamAnswer(
   question: string,
   conversationId: string,

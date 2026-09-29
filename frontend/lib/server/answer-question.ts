@@ -36,7 +36,7 @@ import type {
 import type { ChatStepState, ChatStreamEvent } from "@/lib/chat-stream-events";
 import { copy } from "@/content/fr";
 import { interpolate } from "@/lib/format";
-import { stripInlineLinks } from "@/lib/answer-text";
+import { createVisibleAnswerFilter, stripDocumentSpec, stripInlineLinks } from "@/lib/answer-text";
 import {
   astraSystemPrompt,
   reasoningEffort,
@@ -250,6 +250,7 @@ export async function* streamAnswerQuestion(
   let completion: { content: string; webSources: SourceCitation[]; webUsed: boolean };
   try {
     const tokens = createEventQueue();
+    const visible = createVisibleAnswerFilter();
     let writing = false;
     completion = yield* tokens.drainUntil(
       completeAnswer(
@@ -271,7 +272,8 @@ export async function* streamAnswerQuestion(
             writing = true;
             tokens.push(step("write", steps.stepsWrite, "running"));
           }
-          tokens.push({ type: "token", content: text });
+          const shown = visible.push(text);
+          if (shown) tokens.push({ type: "token", content: shown });
         },
         (activity) => {
           tokens.push(
@@ -283,7 +285,11 @@ export async function* streamAnswerQuestion(
           );
         },
         signal,
-      ),
+      ).then((result) => {
+        const tail = visible.finish();
+        if (tail) tokens.push({ type: "token", content: tail });
+        return result;
+      }),
     );
   } catch (error) {
     yield step("write", steps.stepsWriteDone, "error");
@@ -322,18 +328,19 @@ export async function* streamAnswerQuestion(
           .filter(Boolean)
           .join("\n\n")
       : completion.content;
-  const stripped = stripInlineLinks(
+  const preparedAnswer = stripInlineLinks(
     internal ? rawContent : stripCitationMarks(rawContent),
   );
-  const content = stripped || rawContent.trim();
+  const sourceForFiles = preparedAnswer || rawContent.trim();
+  const content = stripDocumentSpec(sourceForFiles);
 
   let files: GeneratedFile[] = [];
-  if (fileWanted && content) {
+  if (fileWanted && sourceForFiles) {
     yield step("file", steps.stepsFile, "running");
     const queue = createEventQueue();
     const work = generateChatFiles({
       question,
-      content,
+      content: sourceForFiles,
       formats: formats.length ? formats : ["pdf"],
       attachments: prepared,
       userId: memoryContext?.userId,

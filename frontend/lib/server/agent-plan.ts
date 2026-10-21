@@ -19,6 +19,8 @@ export type AgentPlan = {
   formats: FileFormat[];
   /** Tour d'outils agent (search_documents, prepare_deliverable). */
   needTools: boolean;
+  /** Tâche persistante (lot B) : plusieurs étapes, plusieurs livrables, ou prise en charge. */
+  longTask: boolean;
   label: string;
 };
 
@@ -30,6 +32,9 @@ const TASK_VERB =
 
 const MULTI_STEP =
   /\b(puis|ensuite|apr[eè]s (quoi|cela)|et aussi|en plus|d['’]abord|deuxi[eè]mement|étape|plan d['’]action|todo|checklist)\b/i;
+
+const TAKE_CHARGE =
+  /\b(prends? en charge|occupe[- ]toi|m[eè]ne (cette|la) (t[aâ]che|mission)|jusqu['’]au bout|occupe-toi)\b/i;
 
 const CHITCHAT =
   /^(bonjour|bonsoir|salut|hello|hi|hey|merci|ok|d['’]accord|ça va|ca va|à plus|a plus)[\s!.?]*$/i;
@@ -74,6 +79,9 @@ export function planAgentTurn(
   const needTools =
     !researchOff &&
     (researchForced || mode !== "answer" || needRag || deliverable);
+  const longTask =
+    mode !== "answer" &&
+    (MULTI_STEP.test(text) || formats.length > 1 || TAKE_CHARGE.test(text) || (needFile && needImage));
 
   return {
     mode,
@@ -84,11 +92,13 @@ export function planAgentTurn(
     needCanvas,
     formats,
     needTools: researchForced ? needTools : needTools && mode !== "answer",
-    label: labelFor(mode, deliverable),
+    longTask,
+    label: labelFor(mode, deliverable, longTask),
   };
 }
 
-function labelFor(mode: AgentMode, deliverable: boolean): string {
+function labelFor(mode: AgentMode, deliverable: boolean, longTask: boolean): string {
+  if (longTask) return "Mission identifiée — un plan sera proposé avant d'agir.";
   if (mode === "task") {
     return deliverable
       ? "Tâche identifiée — préparation du livrable."

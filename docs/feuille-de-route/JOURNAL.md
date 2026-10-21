@@ -2,6 +2,26 @@
 
 ## Lot B — Cycle de travail
 
+### Plan B2 (avant code)
+
+- Modules `lib/server/agent-loop/` : `schema.ts` (validation JSON), `understand.ts`, `planner.ts`,
+  `tools/registry.ts` (search_documents, draft_section, build_deliverable, review_deliverable, ask_user),
+  `executor.ts`, `verifier.ts`, `runner.ts` (`advanceTask` + verrou `claim_tache`).
+- `agent-plan.ts` : critère « tâche longue » (plusieurs livrables, MULTI_STEP, « prends en charge »).
+  Les questions `answer` restent sur le chemin rapide ; le basculement chat → tâche se fera en B3.
+- Tests : schémas rejetés si invalides ; runner simulé (arrêt validation, reprise, budget, pas de
+  double exécution).
+- Pas de nouvelle variable d'env. Coût max : champ `budget.maxCout` présent, enforcement au lot E.
+
+### Bilan B2 (fait)
+
+- Boucle `agent-loop/` : schémas JSON stricts, cadrage / plan heuristiques (LLM branché en B3),
+  registre d'outils, `advanceTask` avec verrou, arrêt sur question / validation / budget.
+- `agent-plan.ts` : drapeau `longTask` (plusieurs étapes, plusieurs formats, « prends en charge »).
+  Le chat actuel n'est pas encore basculé (B3).
+- Tests runner : plan avant action, reprise après validation, pas de double exécution. 28 vitest.
+- tsc ✓, build ✓. `env.ts` non touché.
+
 ### Plan B1 (avant code)
 
 - Migration `backend/db/016_taches_agent.sql` : tables `taches`, `etapes_tache`, `journal_tache`,

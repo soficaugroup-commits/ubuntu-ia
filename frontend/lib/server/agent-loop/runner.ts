@@ -1,3 +1,4 @@
+import type { TaskStreamEvent } from "@/lib/chat-stream-events";
 import { executeStep } from "@/lib/server/agent-loop/executor";
 import { plannedStepsOf } from "@/lib/server/agent-loop/planner";
 import { defaultTools, type ToolRegistry } from "@/lib/server/agent-loop/tools/registry";
@@ -19,13 +20,7 @@ export type AdvanceOptions = {
   now?: () => number;
 };
 
-export type AdvanceEvent =
-  | { type: "tache_plan"; task: AgentTask }
-  | { type: "tache_etape"; step: TaskStep; phase: "debut" | "fin" }
-  | { type: "tache_question"; question: string }
-  | { type: "tache_validation_requise"; step: TaskStep }
-  | { type: "tache_journal"; entry: TaskJournalEntry }
-  | { type: "tache_fin"; task: AgentTask };
+export type AdvanceEvent = Exclude<TaskStreamEvent, { type: "erreur" }>;
 
 const DEFAULT_BUDGET = 240_000;
 const LOCK_MS = 250_000;

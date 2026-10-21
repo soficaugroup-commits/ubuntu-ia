@@ -277,6 +277,97 @@ export async function claimTask(taskId: string, until: Date): Promise<boolean> {
   return data === true;
 }
 
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function ensureUuid(id: string): string {
+  return UUID.test(id) ? id : crypto.randomUUID();
+}
+
+/** Écrit l'état complet (tâche, étapes, nouvelles lignes de journal) après une étape du runner. */
+export async function persistTask(userId: string, task: AgentTask): Promise<void> {
+  if (task.userId !== userId) throw new Error("Tâche introuvable.");
+  const idMap = new Map<string, string>();
+  for (const step of task.plan) {
+    const next = ensureUuid(step.id);
+    if (next !== step.id) idMap.set(step.id, next);
+    step.id = next;
+  }
+  for (const step of task.plan) {
+    const from = step.entree.from;
+    if (typeof from === "string" && idMap.has(from)) step.entree = { ...step.entree, from: idMap.get(from) };
+  }
+  const client = supabaseAdmin();
+  const { error } = await client
+    .from("taches")
+    .update({
+      objectif: task.objectif,
+      statut: task.statut,
+      plan: task.plan,
+      contexte: task.contexte,
+      etape_courante: task.etapeCourante,
+      terminee_at: task.termineeAt,
+    })
+    .eq("id", task.id)
+    .eq("user_id", userId);
+  if (error) {
+    console.error("[taches] enregistrement", error.message);
+    throw new Error("La tâche n'a pas pu être enregistrée.");
+  }
+  const removed = await client.from("etapes_tache").delete().eq("tache_id", task.id);
+  if (removed.error) console.error("[taches] étapes", removed.error.message);
+  if (task.plan.length) {
+    const inserted = await client.from("etapes_tache").insert(
+      task.plan.map((step) => ({
+        id: step.id,
+        tache_id: task.id,
+        ordre: step.ordre,
+        type: step.type,
+        description: step.description,
+        statut: step.statut,
+        entree: step.entree,
+        sortie: step.sortie,
+        necessite_validation: step.necessiteValidation,
+        tentatives: step.tentatives,
+        started_at: step.startedAt ?? null,
+        finished_at: step.finishedAt ?? null,
+        erreur: step.erreur ?? null,
+      })),
+    );
+    if (inserted.error) {
+      console.error("[taches] insertion étapes", inserted.error.message);
+      throw new Error("Les étapes n'ont pas pu être enregistrées.");
+    }
+  }
+  const fresh = (task.journal ?? []).filter((entry) => !UUID.test(entry.id) && entry.contenu.trim());
+  if (!fresh.length) return;
+  const journal = await client
+    .from("journal_tache")
+    .insert(
+      fresh.map((entry) => ({
+        tache_id: task.id,
+        type: entry.type,
+        contenu: entry.contenu.trim(),
+        auteur: entry.auteur,
+        horodatage: entry.horodatage,
+      })),
+    )
+    .select("id");
+  if (journal.error) {
+    console.error("[taches] journal", journal.error.message);
+    return;
+  }
+  const ids = (journal.data ?? []) as { id: string }[];
+  fresh.forEach((entry, index) => {
+    if (ids[index]?.id) entry.id = ids[index].id;
+  });
+}
+
+export async function releaseTask(taskId: string): Promise<void> {
+  const { error } = await supabaseAdmin().from("taches").update({ verrou_jusqua: null }).eq("id", taskId);
+  if (error) console.error("[taches] verrou", error.message);
+}
+
 export async function updateTaskStatus(
   taskId: string,
   statut: TaskStatus,

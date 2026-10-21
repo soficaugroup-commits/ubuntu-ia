@@ -2,6 +2,27 @@
 
 ## Lot B — Cycle de travail
 
+### Plan B3 (avant code)
+
+- Persistance `persistTask` : étapes et journal écrits à chaque sauvegarde du runner
+  (identifiants UUID, pas de doublon de journal).
+- Routes `requireUser` + propriétaire : `POST/GET /api/taches`, `GET /api/taches/[id]`,
+  `POST …/avancer` (SSE, budget 240 s), `…/plan`, `…/repondre`, `…/valider-etape`, `…/annuler`.
+- Quota sur les POST seulement (un GET bloqué empêcherait de reprendre une tâche).
+- Événements `tache_*` dans `chat-stream-events.ts`. Le chat rapide ne bascule pas encore
+  (carte de tâche = B4).
+- Pas de migration nouvelle. `env.ts` non touché.
+
+### Bilan B3 (fait)
+
+- API : `POST/GET /api/taches`, `GET /api/taches/[id]`, `POST …/avancer` (SSE), `…/plan`,
+  `…/repondre`, `…/valider-etape`, `…/annuler`. Propriétaire vérifié côté serveur.
+- Quota sur les POST seulement ; les GET restent lisibles pour reprendre une tâche.
+- `persistTask` écrit étapes + journal. Événements `tache_*` dans `chat-stream-events.ts`.
+- La carte dans le chat arrive en B4 : le chemin rapide des questions n'est pas modifié.
+- 33 tests, tsc ✓, build ✓, eslint des fichiers B3 ✓. Migration 016 toujours à appliquer
+  avant d'appeler ces routes.
+
 ### Plan B2 (avant code)
 
 - Modules `lib/server/agent-loop/` : `schema.ts` (validation JSON), `understand.ts`, `planner.ts`,

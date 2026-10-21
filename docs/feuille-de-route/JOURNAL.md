@@ -26,6 +26,13 @@
 
 ## Lot A — Livrables fiables
 
+### Plan A4 (avant code)
+
+- Documenter `015_modeles_documents.sql` et le bucket `modeles-documents` dans `.env.example`
+  et `backend/office_worker/README.md` (`payload.bucket` autorisé).
+- Aucune nouvelle variable d'environnement. Pas de push / pas de déploiement.
+- Bilan de lot A dans ce journal.
+
 ### Plan A3 (avant code)
 
 - `document-review.ts` : contrôles déterministes (totaux, chiffres sourcés, citations `[n]`, dates FR)
@@ -155,3 +162,30 @@ appel avant construction des fichiers, `GeneratedFile.relecture`, badge + pannea
   `GeneratedFiles.tsx` ; étape SSE « Relecture du livrable… ».
 - Tests : 20 vitest (3 nouveaux). tsc ✓, build ✓, lint : aucune nouvelle erreur.
 - Pas de migration. `env.ts` non modifié.
+
+### Bilan A4 (fait)
+
+- `.env.example` : `OFFICE_WORKER_URL` documenté (jobs + buckets `generated-files` /
+  `modeles-documents`). Aucune variable nouvelle obligatoire.
+- `backend/office_worker/README.md` : migration 015, bucket `modeles-documents`,
+  `payload.bucket` autorisé, jobs utilisés par le chat / l'admin.
+- Vérifications déjà vertes en A3 (lint préexistant inchangé, tsc, build, 20 tests).
+- **Ne pas déployer** tant que 015 n'est pas jouée sur Supabase.
+
+### Lot A — clôture
+
+**Fait** : charte SOFICAU unique + livrables paginés (A1), modèles du groupe (A2),
+relecture avant remise (A3), documentation (A4).
+
+**Reste** : appliquer 015 sur Supabase ; vérifier à l'œil un Word / Excel / PPTX réel
+(LibreOffice absent du poste) ; déposer un premier modèle officiel.
+
+**Migrations à appliquer** : `backend/db/015_modeles_documents.sql`
+
+**Variables d'env** : `OFFICE_WORKER_URL` (optionnelle, déjà dans Render). Rien d'autre.
+
+**Procédure Render (quand vous donnerez l'accord)** : 1) jouer 015 dans le SQL Editor
+Supabase 2) redeploy `ubuntu-ia-web` 3) redeploy `ubuntu-ia-office` si le worker doit
+lire `modeles-documents`.
+
+**Commits** : `e21d4fa` A1 · `02f7036` A2 · `a25f7dd` A3 · (A4 ce commit). Non poussés.

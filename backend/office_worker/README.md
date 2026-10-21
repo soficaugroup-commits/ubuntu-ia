@@ -5,9 +5,13 @@ Web Next.js + Worker Python/LibreOffice. Supabase reste externe.
 
 ## 1. Préparer Supabase
 
-1. Exécuter `backend/db/013_office_jobs.sql` (SQL Editor).
-2. Créer un bucket Storage privé `office-jobs` (Dashboard → Storage).
-3. Politique d’accès : réservé à `service_role` (le worker et l’API Next l’utilisent).
+1. Exécuter les migrations SQL dans l'ordre, jusqu'à `backend/db/015_modeles_documents.sql`
+   (SQL Editor). La 015 crée le bucket privé `modeles-documents` (25 Mo) et la table
+   `modeles_documents` (RLS lecture org / écriture admin).
+2. Créer un bucket Storage privé `office-jobs` s'il n'existe pas encore (Dashboard → Storage).
+3. Politique d’accès des buckets `office-jobs` et `modeles-documents` : réservée à
+   `service_role` (le worker et l’API Next les utilisent). Le worker n'accepte que
+   `payload.bucket` ∈ `office-jobs` | `generated-files` | `modeles-documents`.
 
 ## 2. Déployer via Blueprint
 
@@ -84,10 +88,10 @@ docker run --env-file .env ubuntu-ia-office
 
 | `kind` | Statut |
 |---|---|
-| `validate_ooxml` | prêt |
-| `pptx_thumbnails` | prêt |
-| `xlsx_recalc` | prêt |
-| `pptx_from_template` | à brancher |
+| `validate_ooxml` | prêt (appelé après génération si `OFFICE_WORKER_URL` est défini) |
+| `pptx_thumbnails` | prêt (aperçu des modèles PowerPoint, bucket `modeles-documents`) |
+| `xlsx_recalc` | prêt (après génération Excel si le worker est configuré) |
+| `pptx_from_template` | prêt côté worker ; le chat remplit d'abord via `clone-pptx.ts` |
 | `pdf_fill_form` | à brancher |
 
 Insérer un job (service_role) :

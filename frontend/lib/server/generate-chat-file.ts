@@ -28,8 +28,10 @@ import {
 } from "@/lib/server/document-process";
 import { storeGeneratedFile } from "@/lib/server/generated-files";
 import { validateGenerated } from "@/lib/server/office-validate";
+import { reviewDeliverable } from "@/lib/server/document-review";
+import { verifyInternalClaims } from "@/lib/server/document-review-llm";
 import { fillTemplate } from "@/lib/server/template-fill";
-import type { FileFormat, GeneratedFile, TemplateFormat } from "@/lib/types";
+import type { FileFormat, GeneratedFile, ReviewReport, TemplateFormat } from "@/lib/types";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -65,10 +67,13 @@ export async function generateChatFiles(input: {
   formats: FileFormat[];
   attachments: PreparedAttachment[];
   userId?: string;
+  /** Extraite des pièces et des sources cités, pour la relecture des chiffres. */
+  excerpts?: string[];
+  citationCount?: number;
   /** Modèle du groupe : le livrable de ce format est produit en remplissant le modèle. */
   template?: ChatFileTemplate;
   onProgress?: (
-    phase: "content" | "build" | "invalid" | "template-missing" | "template-fallback",
+    phase: "content" | "review" | "build" | "invalid" | "template-missing" | "template-fallback",
     format?: FileFormat,
     detail?: string,
   ) => void | Promise<void>;
@@ -77,7 +82,20 @@ export async function generateChatFiles(input: {
   if (!markdown || !input.formats.length) return [];
 
   await input.onProgress?.("content");
-  const spec = cleanSpec(specFromMarkdown(markdown, input.question));
+  const draft = cleanSpec(specFromMarkdown(markdown, input.question));
+  await input.onProgress?.("review");
+  const reviewed = await reviewDeliverable({
+    spec: draft,
+    question: input.question,
+    excerpts: input.excerpts ?? input.attachments.map((item) => item.note).filter(Boolean),
+    citationCount: input.citationCount ?? 0,
+    verifyClaims: (spec, excerpts) => verifyInternalClaims(spec, excerpts),
+  }).catch((error) => {
+    console.error("[chat] relecture", error);
+    return { spec: draft, report: { statut: "a_verifier" as const, corrections: [], alertes: [] } };
+  });
+  const spec = reviewed.spec;
+  const relecture = reviewed.report;
   const job = await planStyleTransfer({
     question: input.question,
     attachments: input.attachments,
@@ -101,7 +119,7 @@ export async function generateChatFiles(input: {
       if (input.template && input.template.format === format) {
         const filled = await fillFromTemplate(input.template, spec, job, input.onProgress);
         if (filled) {
-          files.push(await deliver(`${stem}.${EXT[format]}`, format, filled, input.userId));
+          files.push(await deliver(`${stem}.${EXT[format]}`, format, filled, input.userId, relecture));
           continue;
         }
       }
@@ -132,7 +150,7 @@ export async function generateChatFiles(input: {
         await input.onProgress?.("invalid", format);
         continue;
       }
-      files.push(await deliver(`${stem}.${EXT[format]}`, format, bytes, input.userId));
+      files.push(await deliver(`${stem}.${EXT[format]}`, format, bytes, input.userId, relecture));
     } catch (error) {
       console.error("[chat] file", format, error);
     }
@@ -140,7 +158,13 @@ export async function generateChatFiles(input: {
   return files;
 }
 
-async function deliver(name: string, format: FileFormat, bytes: Uint8Array, userId?: string): Promise<GeneratedFile> {
+async function deliver(
+  name: string,
+  format: FileFormat,
+  bytes: Uint8Array,
+  userId?: string,
+  relecture?: ReviewReport,
+): Promise<GeneratedFile> {
   const staged = await stageDeliverable(name, bytes);
   const stored = await storeGeneratedFile({ userId, name, mime: MIME[format], format, bytes: staged });
   return {
@@ -149,6 +173,7 @@ async function deliver(name: string, format: FileFormat, bytes: Uint8Array, user
     mime: MIME[format],
     format,
     url: stored ?? `data:${MIME[format]};base64,${staged.toString("base64")}`,
+    relecture,
   };
 }
 

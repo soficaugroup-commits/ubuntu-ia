@@ -387,6 +387,12 @@ export async function* streamAnswerQuestion(
       formats: formats.length ? formats : ["pdf"],
       attachments: prepared,
       userId: memoryContext?.userId,
+      excerpts: [
+        ...selected.map((chunk) => chunk.contenu),
+        ...completion.webSources.map((item) => item.extrait),
+        ...prepared.map((item) => item.note),
+      ].filter((item) => item.trim()),
+      citationCount: selected.length,
       template: template
         ? { format: template.template.format, bytes: template.bytes, nom: template.template.nom }
         : undefined,
@@ -402,6 +408,9 @@ export async function* streamAnswerQuestion(
               "error",
             ),
           );
+        }
+        if (phase === "review") {
+          queue.push(step("review", steps.stepsReview, "running"));
         }
         if (phase === "content") {
           queue.push(step("file", steps.stepsFileContent, "running"));

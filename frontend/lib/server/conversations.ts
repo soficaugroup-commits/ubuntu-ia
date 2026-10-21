@@ -8,6 +8,10 @@ import type {
   FileFormat,
   GeneratedFile,
   GeneratedImage,
+  ReviewAlert,
+  ReviewCorrection,
+  ReviewReport,
+  ReviewStatus,
   SourceCitation,
 } from "@/lib/types";
 
@@ -295,6 +299,48 @@ function parseImages(value: unknown): GeneratedImage[] | undefined {
   return images.length ? images : undefined;
 }
 
+function parseReview(value: unknown): ReviewReport | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const row = value as Record<string, unknown>;
+  const statut: ReviewStatus | undefined =
+    row.statut === "ok" || row.statut === "corrige" || row.statut === "a_verifier" ? row.statut : undefined;
+  if (!statut) return undefined;
+  const corrections = Array.isArray(row.corrections)
+    ? row.corrections.flatMap((item): ReviewCorrection[] => {
+        if (!item || typeof item !== "object") return [];
+        const next = item as Record<string, unknown>;
+        if ((next.type !== "total" && next.type !== "marquage") || typeof next.extrait !== "string") return [];
+        return [
+          {
+            type: next.type,
+            extrait: next.extrait,
+            avant: typeof next.avant === "string" ? next.avant : "",
+            apres: typeof next.apres === "string" ? next.apres : "",
+          },
+        ];
+      })
+    : [];
+  const alertes = Array.isArray(row.alertes)
+    ? row.alertes.flatMap((item): ReviewAlert[] => {
+        if (!item || typeof item !== "object") return [];
+        const next = item as Record<string, unknown>;
+        if (typeof next.extrait !== "string" || typeof next.explication !== "string") return [];
+        const type = next.type;
+        if (
+          type !== "chiffre_non_source" &&
+          type !== "citation_manquante" &&
+          type !== "date_incoherente" &&
+          type !== "total_incorrect" &&
+          type !== "fait_non_etaye"
+        ) {
+          return [];
+        }
+        return [{ type, extrait: next.extrait, explication: next.explication }];
+      })
+    : [];
+  return { statut, corrections, alertes };
+}
+
 function parseFiles(value: unknown): GeneratedFile[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const files = value.flatMap((item) => {
@@ -310,6 +356,7 @@ function parseFiles(value: unknown): GeneratedFile[] | undefined {
         mime: typeof row.mime === "string" ? row.mime : "application/octet-stream",
         format: asFileFormat(row.format),
         url: row.url,
+        relecture: parseReview(row.relecture),
       },
     ];
   });

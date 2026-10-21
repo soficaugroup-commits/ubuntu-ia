@@ -26,6 +26,19 @@
 
 ## Lot A — Livrables fiables
 
+### Plan A3 (avant code)
+
+- `document-review.ts` : contrôles déterministes (totaux, chiffres sourcés, citations `[n]`, dates FR)
+  + `document-review-llm.ts` (modèle rapide, `temperature 0`, JSON strict) derrière le même
+  `reviewDeliverable`. Si l'appel LLM échoue ou n'est pas configuré → relecture déterministe seule,
+  jamais de blocage.
+- Appel dans `generate-chat-file.ts` **avant** construction, sur la spec ; corrections sûres appliquées
+  (total de tableau) ; faits non étayés marqués « [à confirmer] ».
+- `GeneratedFile.relecture` dans `types.ts` + `conversations.ts#parseFiles` ; badge + panneau dans
+  `GeneratedFiles.tsx` ; étape SSE « Relecture du livrable… ».
+- Tests vitest : total faux → corrigé ; chiffre absent → alerte ; `[7]` sans extrait 7 → alerte.
+- Pas de nouvelle migration. `env.ts` non modifié (le vérificateur réutilise `chatModel`).
+
 ### Plan A2 (avant code)
 
 - Migration `backend/db/015_modeles_documents.sql` : bucket privé `modeles-documents` (25 Mo), table
@@ -129,3 +142,16 @@ appel avant construction des fichiers, `GeneratedFile.relecture`, badge + pannea
   corrigé). `env.ts` / mails d'invitation et de reset **non touchés**.
 - Non vérifié dans le navigateur authentifié (pas d'outils browser) : le sélecteur n'apparaît qu'une
   fois la migration 015 appliquée et au moins un modèle actif déposé.
+
+### Bilan A3 (fait)
+
+- `document-review.ts` : totaux de tableau recalculés (correction si une seule ligne Total),
+  chiffres absents des sources → alerte + « [à confirmer] », citations `[n]` hors extraits,
+  dates futures présentées comme passées.
+- `document-review-llm.ts` : vérificateur optionnel (`chatModel`, temperature 0, JSON strict).
+  Échec ou absence de clé → relecture déterministe seule, le livrable part quand même.
+- Intégré dans `generate-chat-file.ts` avant construction ; `GeneratedFile.relecture` persisté
+  via `conversations.ts` ; badge Relu / Corrigé / Points à vérifier + panneau dans
+  `GeneratedFiles.tsx` ; étape SSE « Relecture du livrable… ».
+- Tests : 20 vitest (3 nouveaux). tsc ✓, build ✓, lint : aucune nouvelle erreur.
+- Pas de migration. `env.ts` non modifié.

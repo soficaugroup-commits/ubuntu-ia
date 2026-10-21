@@ -102,12 +102,42 @@ export type GeneratedImage = {
   alt: string;
 };
 
+export type ReviewStatus = "ok" | "corrige" | "a_verifier";
+
+export type ReviewAlertType =
+  | "chiffre_non_source"
+  | "citation_manquante"
+  | "date_incoherente"
+  | "total_incorrect"
+  | "fait_non_etaye";
+
+export type ReviewAlert = {
+  type: ReviewAlertType;
+  extrait: string;
+  explication: string;
+};
+
+export type ReviewCorrection = {
+  type: "total" | "marquage";
+  extrait: string;
+  avant: string;
+  apres: string;
+};
+
+export type ReviewReport = {
+  statut: ReviewStatus;
+  corrections: ReviewCorrection[];
+  alertes: ReviewAlert[];
+};
+
 export type GeneratedFile = {
   id: string;
   name: string;
   mime: string;
   format: FileFormat | "png" | "jpeg" | "webp";
   url: string;
+  /** Rapport de relecture automatique, présent sur chaque livrable. */
+  relecture?: ReviewReport;
 };
 
 export type AssistantStatus =

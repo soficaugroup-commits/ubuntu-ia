@@ -1,10 +1,11 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Surface } from "@/components/ui/Surface";
 import { IconDownload, IconFile } from "@/components/ui/icons";
 import { copy } from "@/content/fr";
-import type { GeneratedFile, GeneratedImage } from "@/lib/types";
+import type { GeneratedFile, GeneratedImage, ReviewReport } from "@/lib/types";
 
 type Props = {
   files?: GeneratedFile[];
@@ -49,30 +50,34 @@ export function GeneratedFiles({ files, images }: Props) {
                 <Surface
                   elevation="pressed"
                   radius="surface"
-                  className="flex flex-wrap items-center gap-3 px-4 py-3"
+                  className="flex flex-col gap-3 px-4 py-3"
                 >
-                  <IconFile />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">{file.name}</span>
-                    <span className="text-xs text-content-muted">
-                      {copy.chat.fileKind[file.format] ?? file.format.toUpperCase()}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <IconFile />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{file.name}</span>
+                      <span className="text-xs text-content-muted">
+                        {copy.chat.fileKind[file.format] ?? file.format.toUpperCase()}
+                      </span>
                     </span>
-                  </span>
-                  {file.format === "html" ? (
-                    <Button
-                      type="button"
-                      tooltip={copy.chat.tipOpenPage}
-                      onClick={() => window.open(file.url, "_blank", "noopener,noreferrer")}
-                    >
-                      {copy.chat.openPage}
-                    </Button>
-                  ) : null}
-                  <DownloadLink
-                    href={file.url}
-                    name={file.name}
-                    label={copy.chat.downloadFile}
-                    tooltip={copy.chat.tipDownloadFile}
-                  />
+                    {file.relecture ? <StatusBadge status={file.relecture.statut} /> : null}
+                    {file.format === "html" ? (
+                      <Button
+                        type="button"
+                        tooltip={copy.chat.tipOpenPage}
+                        onClick={() => window.open(file.url, "_blank", "noopener,noreferrer")}
+                      >
+                        {copy.chat.openPage}
+                      </Button>
+                    ) : null}
+                    <DownloadLink
+                      href={file.url}
+                      name={file.name}
+                      label={copy.chat.downloadFile}
+                      tooltip={copy.chat.tipDownloadFile}
+                    />
+                  </div>
+                  {file.relecture ? <ReviewPanel report={file.relecture} /> : null}
                 </Surface>
               </li>
             ))}
@@ -80,6 +85,33 @@ export function GeneratedFiles({ files, images }: Props) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ReviewPanel({ report }: { report: ReviewReport }) {
+  if (!report.alertes.length && !report.corrections.length) return null;
+  return (
+    <details className="text-sm">
+      <summary className="cursor-pointer font-semibold text-content">
+        {copy.chat.review.open}
+      </summary>
+      <ul className="mt-2 flex flex-col gap-2" aria-label={copy.chat.review.alertsLabel}>
+        {report.alertes.map((alert, index) => (
+          <li key={`a-${index}`} className="text-content-muted">
+            <span className="font-semibold text-content">{copy.chat.review.types[alert.type]}</span>
+            {" — "}
+            {alert.extrait} : {alert.explication}
+          </li>
+        ))}
+        {report.corrections
+          .filter((item) => item.type === "total")
+          .map((item, index) => (
+            <li key={`c-${index}`} className="text-content-muted">
+              {item.extrait} : {item.avant} → {item.apres}
+            </li>
+          ))}
+      </ul>
+    </details>
   );
 }
 

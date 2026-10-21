@@ -342,6 +342,7 @@ function parseTools(value: unknown): ChatTools | undefined {
     documents?: unknown;
     web?: unknown;
     research?: unknown;
+    modeleId?: unknown;
   };
   const tools: ChatTools = {};
   if (row.image) tools.image = true;
@@ -351,12 +352,14 @@ function parseTools(value: unknown): ChatTools | undefined {
   if (row.web === false) tools.web = false;
   if (row.research === false) tools.research = false;
   else if (row.research) tools.research = true;
+  if (typeof row.modeleId === "string" && row.modeleId) tools.modeleId = row.modeleId;
   return tools.image ||
     tools.canvas ||
     tools.file ||
     tools.documents === false ||
     tools.web === false ||
-    tools.research !== undefined
+    tools.research !== undefined ||
+    tools.modeleId
     ? tools
     : undefined;
 }

@@ -28,7 +28,8 @@ import {
 } from "@/lib/server/document-process";
 import { storeGeneratedFile } from "@/lib/server/generated-files";
 import { validateGenerated } from "@/lib/server/office-validate";
-import type { FileFormat, GeneratedFile } from "@/lib/types";
+import { fillTemplate } from "@/lib/server/template-fill";
+import type { FileFormat, GeneratedFile, TemplateFormat } from "@/lib/types";
 
 const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -56,15 +57,20 @@ const EXT: Record<FileFormat, string> = {
   html: "html",
 };
 
+export type ChatFileTemplate = { format: TemplateFormat; bytes: Buffer; nom: string };
+
 export async function generateChatFiles(input: {
   question: string;
   content: string;
   formats: FileFormat[];
   attachments: PreparedAttachment[];
   userId?: string;
+  /** Modèle du groupe : le livrable de ce format est produit en remplissant le modèle. */
+  template?: ChatFileTemplate;
   onProgress?: (
-    phase: "content" | "build" | "invalid",
+    phase: "content" | "build" | "invalid" | "template-missing" | "template-fallback",
     format?: FileFormat,
+    detail?: string,
   ) => void | Promise<void>;
 }): Promise<GeneratedFile[]> {
   const markdown = input.content.trim();
@@ -80,16 +86,25 @@ export async function generateChatFiles(input: {
   });
   const tokens = fingerprintSpec(spec);
   const contentAttachment = job.content && job.content !== job.style ? job.content : undefined;
-  const stem = fileStem(
-    input.question,
-    contentAttachment?.name ?? (job.sameDocument ? job.style?.name : input.attachments[0]?.name),
-  );
+  const stem = input.template
+    ? slug(input.template.nom) || "modele"
+    : fileStem(
+        input.question,
+        contentAttachment?.name ?? (job.sameDocument ? job.style?.name : input.attachments[0]?.name),
+      );
   const files: GeneratedFile[] = [];
 
   for (const format of input.formats) {
     try {
       const guide = consultGuide(format);
       await input.onProgress?.("build", format);
+      if (input.template && input.template.format === format) {
+        const filled = await fillFromTemplate(input.template, spec, job, input.onProgress);
+        if (filled) {
+          files.push(await deliver(`${stem}.${EXT[format]}`, format, filled, input.userId));
+          continue;
+        }
+      }
       let bytes = await buildFormat(format, markdown, spec, input.attachments, job, guide);
       if (!bytes || bytes.length === 0 || bytes.length > MAX_BYTES) continue;
       const produced = await textFromGenerated(format, bytes).catch(() => "");
@@ -117,26 +132,59 @@ export async function generateChatFiles(input: {
         await input.onProgress?.("invalid", format);
         continue;
       }
-      const staged = await stageDeliverable(`${stem}.${EXT[format]}`, bytes);
-      const stored = await storeGeneratedFile({
-        userId: input.userId,
-        name: `${stem}.${EXT[format]}`,
-        mime: MIME[format],
-        format,
-        bytes: staged,
-      });
-      files.push({
-        id: crypto.randomUUID(),
-        name: `${stem}.${EXT[format]}`,
-        mime: MIME[format],
-        format,
-        url: stored ?? `data:${MIME[format]};base64,${staged.toString("base64")}`,
-      });
+      files.push(await deliver(`${stem}.${EXT[format]}`, format, bytes, input.userId));
     } catch (error) {
       console.error("[chat] file", format, error);
     }
   }
   return files;
+}
+
+async function deliver(name: string, format: FileFormat, bytes: Uint8Array, userId?: string): Promise<GeneratedFile> {
+  const staged = await stageDeliverable(name, bytes);
+  const stored = await storeGeneratedFile({ userId, name, mime: MIME[format], format, bytes: staged });
+  return {
+    id: crypto.randomUUID(),
+    name,
+    mime: MIME[format],
+    format,
+    url: stored ?? `data:${MIME[format]};base64,${staged.toString("base64")}`,
+  };
+}
+
+/**
+ * Remplit le modèle du groupe. En cas d'échec ou de fichier invalide, renvoie null :
+ * l'appelant produit alors le livrable avec la charte SOFICAU et l'étape l'indique.
+ */
+async function fillFromTemplate(
+  template: ChatFileTemplate,
+  spec: ReturnType<typeof specFromMarkdown>,
+  job: StyleJob,
+  onProgress?: (
+    phase: "template-missing" | "template-fallback",
+    format?: FileFormat,
+    detail?: string,
+  ) => void | Promise<void>,
+): Promise<Uint8Array | null> {
+  try {
+    const result = await fillTemplate(template.format, template.bytes, spec, {
+      dna: ensureContrast(job.dna),
+      synthesized: job.editorialSynthesis,
+    });
+    const validation = await validateGenerated(template.format, result.bytes);
+    if (!validation.ok) {
+      console.error("[chat] modèle invalide", template.format, validation.problems);
+      await onProgress?.("template-fallback", template.format);
+      return null;
+    }
+    if (result.warnings.length) console.warn("[chat] modèle", result.warnings);
+    if (result.missing.length) await onProgress?.("template-missing", template.format, result.missing.join(", "));
+    return result.bytes;
+  } catch (error) {
+    console.error("[chat] modèle", template.format, error);
+    await onProgress?.("template-fallback", template.format);
+    return null;
+  }
 }
 
 async function buildFormat(

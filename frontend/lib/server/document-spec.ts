@@ -74,6 +74,10 @@ export type DocumentSpec = {
   charts: DocChart[];
   kpis?: DocKpi[];
   design?: DocDesign;
+  /** Valeurs des balises `{{champ}}` d'un modèle (bloc `champs` du fence). */
+  fields?: Record<string, string>;
+  /** Lignes des boucles `{{#nom}}…{{/nom}}` ou des tableaux Excel d'un modèle (bloc `lignes`). */
+  loops?: Record<string, Record<string, string>[]>;
 };
 
 export const BRAND = {
@@ -112,6 +116,8 @@ function mergeVisibleAnswer(fence: DocumentSpec, prose: DocumentSpec): DocumentS
       charts: prose.charts.length ? prose.charts : fence.charts,
       kpis: prose.kpis?.length ? prose.kpis : fence.kpis,
       design: fence.design ?? prose.design,
+      fields: fence.fields,
+      loops: fence.loops,
     };
   }
   const byTitle = new Map(prose.sections.map((section) => [normTitle(section.title), section]));
@@ -138,6 +144,8 @@ function mergeVisibleAnswer(fence: DocumentSpec, prose: DocumentSpec): DocumentS
       subtitle: fence.subtitle || prose.subtitle,
       design: fence.design ?? prose.design,
       kpis: fence.kpis ?? prose.kpis,
+      fields: fence.fields,
+      loops: fence.loops,
     };
   }
   return { ...fence, sections };
@@ -199,7 +207,11 @@ function specFromFenceBody(body: string): DocumentSpec | null {
         : Array.isArray(sectionSource)
           ? sectionSource.flatMap((item) => sectionsFromUnknown(item))
           : [];
-    if (!title && !parsedSections.length && !asDesign(raw.design ?? raw.miseEnForme)) return null;
+    const fields = asFields(raw.champs ?? raw.fields);
+    const loops = asLoops(raw.lignes ?? raw.boucles ?? raw.loops);
+    if (!title && !parsedSections.length && !asDesign(raw.design ?? raw.miseEnForme) && !fields && !loops) {
+      return null;
+    }
     const charts = Array.isArray(raw.graphes)
       ? raw.graphes
       : Array.isArray(raw.charts)
@@ -215,10 +227,34 @@ function specFromFenceBody(body: string): DocumentSpec | null {
       charts: parsedCharts,
       kpis: asKpis(raw.indicateurs ?? raw.kpis),
       design: asDesign(raw.design ?? raw.miseEnForme),
+      fields,
+      loops,
     };
   } catch {
     return null;
   }
+}
+
+function asFields(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, item]) => typeof item === "string" || typeof item === "number")
+    .map(([key, item]) => [key.trim(), String(item)] as const)
+    .filter(([key]) => Boolean(key));
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+function asLoops(value: unknown): Record<string, Record<string, string>[]> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const loops: Record<string, Record<string, string>[]> = {};
+  for (const [key, rows] of Object.entries(value as Record<string, unknown>)) {
+    if (!Array.isArray(rows)) continue;
+    const items = rows
+      .map((row) => asFields(row))
+      .filter((row): row is Record<string, string> => Boolean(row));
+    if (items.length) loops[key.trim()] = items;
+  }
+  return Object.keys(loops).length ? loops : undefined;
 }
 
 function sectionsFromUnknown(value: unknown): DocSection[] {

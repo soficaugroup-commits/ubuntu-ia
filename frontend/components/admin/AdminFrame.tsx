@@ -36,6 +36,7 @@ export function AdminFrame({ children }: { children: ReactNode }) {
   const tabs = [
     { href: "/admin", label: copy.admin.tabs.documents, tip: copy.tips.tabDocuments, exact: true },
     { href: "/admin/acces", label: copy.admin.tabs.access, tip: copy.tips.tabAccess, exact: false },
+    { href: "/admin/modeles", label: copy.admin.tabs.templates, tip: copy.tips.tabTemplates, exact: false },
     { href: "/admin/domaines", label: copy.admin.tabs.domains, tip: copy.tips.tabDomains, exact: false },
     { href: "/admin/retours", label: copy.admin.tabs.feedback, tip: copy.tips.tabFeedback, exact: false },
   ];

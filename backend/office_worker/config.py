@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
+from typing import Any
+
+ALLOWED_BUCKETS: tuple[str, ...] = ("office-jobs", "generated-files", "modeles-documents")
 
 
 def _int(name: str, default: int) -> int:
@@ -52,3 +56,16 @@ class Settings:
 
 
 settings = Settings()
+
+
+def resolve_bucket(job: Mapping[str, Any], default: str) -> str:
+    """Bucket Storage d'un job : `payload.bucket` s'il est autorisé, sinon le bucket par défaut.
+
+    Le chat dépose ses fichiers dans `generated-files`, l'admin ses modèles dans
+    `modeles-documents` ; tout autre nom est ignoré pour ne pas ouvrir d'autres buckets.
+    """
+    payload = job.get("payload")
+    requested = payload.get("bucket") if isinstance(payload, Mapping) else None
+    if isinstance(requested, str) and (requested in ALLOWED_BUCKETS or requested == default):
+        return requested
+    return default

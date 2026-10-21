@@ -10,7 +10,14 @@ export function compactTools(tools?: ChatTools): ChatTools | undefined {
   if (tools?.web === false) next.web = false;
   if (tools?.research === false) next.research = false;
   else if (tools?.research) next.research = true;
-  return next.image || next.canvas || next.file || next.documents === false || next.web === false || next.research !== undefined
+  if (tools?.modeleId) next.modeleId = tools.modeleId;
+  return next.image ||
+    next.canvas ||
+    next.file ||
+    next.documents === false ||
+    next.web === false ||
+    next.research !== undefined ||
+    next.modeleId
     ? next
     : undefined;
 }

@@ -5,7 +5,9 @@
 
 ## Migrations à appliquer sur Supabase (cumul)
 
-_(aucune pour l'instant)_
+- `backend/db/015_modeles_documents.sql` : bucket privé `modeles-documents` (25 Mo) + table
+  `public.modeles_documents` + RLS (lecture org / écriture admin) + politique Storage `service_role`.
+  À jouer **avant** d'utiliser l'onglet admin « Modèles ».
 
 ## Variables d'environnement nouvelles (cumul)
 
@@ -17,12 +19,30 @@ _(aucune pour l'instant)_
 - **Lint de base** : `npm run lint` remonte 10 erreurs **préexistantes** (règles React Compiler
   `react-hooks/set-state-in-effect` et accès aux refs pendant le rendu) dans `AccessWorkspace`, `DomainsWorkspace`,
   `FeedbackWorkspace`, `ChatWorkspace`, `Composer`, `UserTurn`, `Dialog`, `SelectField`, `Sheet`, `lib/session.tsx`.
-  Aucune n'est introduite par la feuille de route. Elles seront corrigées au fil des sous-lots qui touchent ces
-  fichiers (Composer en A2) ou dans un sous-lot dédié si vous le souhaitez.
+  Aucune n'est introduite par la feuille de route. Composer `withFileBytes` (accès avant déclaration)
+  a été corrigé en A2. Les 9 restantes relèvent des fichiers non encore touchés, ou d'un sous-lot dédié.
 
 ---
 
 ## Lot A — Livrables fiables
+
+### Plan A2 (avant code)
+
+- Migration `backend/db/015_modeles_documents.sql` : bucket privé `modeles-documents` (25 Mo), table
+  `modeles_documents` + RLS (lecture org, écriture admin), politique Storage réservée à `service_role`.
+- Admin : onglet `/admin/modeles` (`TemplatesWorkspace`) — upload, analyse des balises `{{champ}}` /
+  structure, activer/désactiver, supprimer (objet Storage inclus). Miniature PPTX via job
+  `pptx_thumbnails` si `OFFICE_WORKER_URL`.
+- Moteur `template-fill.ts` / `ooxml-text.ts` / `template-xlsx.ts` : fusion des balises coupées entre
+  runs, duplication `{{#lignes}}`, insertion sous les titres du modèle, xlsx plages nommées + tableaux
+  sans écraser les formules, pptx via `clone-pptx.ts` à défaut de balises.
+- Chat : `SelectField` « Partir d'un modèle » dans le composeur ; outil agent `use_template` ;
+  `tools.modeleId` jusqu'à `generate-chat-file.ts` ; étape SSE « Modèle utilisé : … ».
+- Worker : `payload.bucket` autorisé (`generated-files`, `modeles-documents`) pour lire les modèles.
+- Tests : balises coupées, lignes de tableau, formules xlsx intactes, correspondance de nom.
+- Hors périmètre (ne pas commiter) : `env.ts`, `invitation-mail.ts`, `password-reset-mail.ts`.
+- Risques : la TOC Word reste un champ à mettre à jour à l'ouverture ; le bucket n'existe qu'après
+  application de 015 — l'admin affichera une erreur propre tant que la migration n'est pas jouée.
 
 ### Plan (avant code)
 
@@ -88,3 +108,24 @@ appel avant construction des fichiers, `GeneratedFile.relecture`, badge + pannea
   des destinataires ; Poppins reste la police de l'interface.
 - Non vérifié visuellement dans Word/PowerPoint (pas de LibreOffice sur le poste) : contrôle par extraction de
   texte du PDF et inspection du XML. Échantillons dans `outputs/a1-echantillons/` (ignoré par git).
+
+### Bilan A2 (fait)
+
+- Migration `015_modeles_documents.sql` : bucket `modeles-documents` (privé, 25 Mo), table
+  `modeles_documents` (champs + structure détectés), RLS lecture org / écriture admin, Storage
+  réservé à `service_role`.
+- Admin `/admin/modeles` : upload .docx/.pptx/.xlsx, analyse des balises `{{champ}}` et de la
+  structure (titres, diapos, plages nommées), activer/désactiver, suppression (fichier Storage inclus).
+  Miniature PPTX via job `pptx_thumbnails` si le worker est configuré (`payload.bucket`).
+- Moteur : fusion des balises coupées entre runs (`ooxml-text.ts`), duplication `{{#lignes}}`,
+  insertion des sections sous les titres du modèle, xlsx sans écraser les formules, pptx via
+  `clone-pptx.ts` à défaut de balises.
+- Chat : `SelectField` « Partir d'un modèle » dans le composeur ; `tools.modeleId` jusqu'à
+  `generate-chat-file.ts` ; outil agent `use_template` ; étape SSE « Modèle utilisé : … ».
+- Worker : `payload.bucket` autorisé (`generated-files`, `modeles-documents`).
+- Tests : 17 vitest (dont balises coupées, lignes de tableau, formules xlsx, correspondance de nom)
+  + tests bucket worker.
+- Vérifications : tsc ✓, build ✓, tests ✓, lint : 9 erreurs préexistantes (Composer `withFileBytes`
+  corrigé). `env.ts` / mails d'invitation et de reset **non touchés**.
+- Non vérifié dans le navigateur authentifié (pas d'outils browser) : le sélecteur n'apparaît qu'une
+  fois la migration 015 appliquée et au moins un modèle actif déposé.

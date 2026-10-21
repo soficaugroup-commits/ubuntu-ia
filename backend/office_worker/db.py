@@ -72,16 +72,18 @@ def finish_job(
     supabase_client().table("office_jobs").update(payload).eq("id", job_id).execute()
 
 
-def download_input(path: str, dest: Path) -> None:
+def download_input(path: str, dest: Path, bucket: str | None = None) -> None:
     client = supabase_client()
-    data = client.storage.from_(settings.storage_bucket).download(path)
+    data = client.storage.from_(bucket or settings.storage_bucket).download(path)
     dest.write_bytes(data)
 
 
-def upload_output(local_path: Path, remote_path: str, content_type: str) -> str:
+def upload_output(
+    local_path: Path, remote_path: str, content_type: str, bucket: str | None = None
+) -> str:
     client = supabase_client()
     body = local_path.read_bytes()
-    client.storage.from_(settings.storage_bucket).upload(
+    client.storage.from_(bucket or settings.storage_bucket).upload(
         remote_path,
         body,
         file_options={"content-type": content_type, "upsert": "true"},

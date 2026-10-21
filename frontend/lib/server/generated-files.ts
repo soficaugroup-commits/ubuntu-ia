@@ -35,7 +35,7 @@ export async function storeGeneratedFile(input: {
           kind,
           input_path: path,
           status: "queued",
-          payload: { source: "chat", format: input.format },
+          payload: { source: "chat", format: input.format, bucket: GENERATED_BUCKET },
         })),
       );
       if (jobError) console.error("[generated-files] office_jobs", jobError.message);

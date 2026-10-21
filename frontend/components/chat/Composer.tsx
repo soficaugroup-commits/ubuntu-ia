@@ -15,6 +15,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
+import { SelectField } from "@/components/ui/SelectField";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { Sheet } from "@/components/ui/Sheet";
 import { Surface } from "@/components/ui/Surface";
@@ -58,6 +59,7 @@ import {
   transcriptFromSpeechEvent,
   type SpeechRecognitionLike,
 } from "@/lib/speech";
+import { loadTemplateOptions, type TemplateOption } from "@/lib/templates-api";
 import { recentVoiceTurns, saveVoiceTurn } from "@/lib/voice-api";
 import type { ChatAttachment, ChatMessage, ChatTools } from "@/lib/types";
 
@@ -142,6 +144,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [voiceAnswer, setVoiceAnswer] = useState("");
   const [voiceError, setVoiceError] = useState<string | undefined>();
   const [dragging, setDragging] = useState(false);
+  const [templates, setTemplates] = useState<TemplateOption[]>([]);
+  const [modeleId, setModeleId] = useState("");
+  const templatePickerId = useId();
 
   const canSend = online && !sending && (Boolean(draft.trim()) || attachments.length > 0);
   const describedBy = [hintId, validation ? errorId : null].filter(Boolean).join(" ");
@@ -182,6 +187,17 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     messages,
     onVoiceTurn,
   ]);
+
+  useEffect(() => {
+    let alive = true;
+    void loadTemplateOptions().then((result) => {
+      if (!alive || !result.ok) return;
+      setTemplates(result.modeles);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   function clearRestartTimer() {
     if (restartTimerRef.current == null) return;
@@ -301,6 +317,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       setImageOn(false);
       setCanvasOn(false);
       setFileOn(false);
+      setModeleId("");
       setVoiceOpen(false);
       setVoiceDraft("");
       setVoiceAnswer("");
@@ -369,6 +386,21 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     });
   }
 
+  async function withFileBytes(items: ChatAttachment[]): Promise<ChatAttachment[]> {
+    return Promise.all(
+      items.map(async (item) => {
+        const file = filesRef.current.get(item.id);
+        const limit = item.kind === "image" ? COMPOSER_MAX_BYTES : CHAT_ANALYZE_MAX_BYTES;
+        if (!file || file.size > limit) return item;
+        try {
+          return { ...item, contentBase64: await fileToBase64(file) };
+        } catch {
+          return item;
+        }
+      }),
+    );
+  }
+
   function submit(question: string, files: ChatAttachment[]) {
     const text = question.trim() || (files.length ? copy.chat.attachmentOnlyPrompt : "");
     if (!text) {
@@ -382,7 +414,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     const snapshot = files.map((item) => ({ ...item }));
     const imageRequested = imageOn;
     const canvasRequested = canvasOn;
-    const fileRequested = fileOn;
+    const fileRequested = fileOn || Boolean(modeleId);
+    const chosenModeleId = modeleId;
     const documentsRequested = documentsOn;
     const webRequested = webOn;
     const researchRequested = researchOn;
@@ -409,6 +442,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         documents: documentsRequested ? undefined : false,
         web: webRequested ? undefined : false,
         research: researchRequested ? undefined : false,
+        modeleId: chosenModeleId || undefined,
       });
     })();
   }
@@ -416,21 +450,6 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   useEffect(() => {
     submitRef.current = submit;
   });
-
-  async function withFileBytes(items: ChatAttachment[]): Promise<ChatAttachment[]> {
-    return Promise.all(
-      items.map(async (item) => {
-        const file = filesRef.current.get(item.id);
-        const limit = item.kind === "image" ? COMPOSER_MAX_BYTES : CHAT_ANALYZE_MAX_BYTES;
-        if (!file || file.size > limit) return item;
-        try {
-          return { ...item, contentBase64: await fileToBase64(file) };
-        } catch {
-          return item;
-        }
-      }),
-    );
-  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -570,6 +589,14 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   function disarmFile() {
     setFileOn(false);
     setToolsHint(copy.chat.toolFileOff);
+  }
+
+  function chooseTemplate(id: string) {
+    setModeleId(id);
+    if (!id) return;
+    setFileOn(true);
+    const found = templates.find((item) => item.id === id);
+    if (found) setToolsHint(interpolate(copy.chat.templatePickerArmed, { name: found.nom }));
   }
 
   function runTool(action: ToolItem["action"]) {
@@ -750,6 +777,24 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               />
             ) : null}
           </div>
+        ) : null}
+
+        {templates.length ? (
+          <SelectField
+            id={templatePickerId}
+            label={copy.chat.templatePickerLabel}
+            hint={copy.chat.templatePickerHint}
+            value={modeleId}
+            className="w-full max-w-none"
+            onChange={chooseTemplate}
+          >
+            <option value="">{copy.chat.templatePickerNone}</option>
+            {templates.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.nom} ({copy.chat.templatePickerFormats[item.format]})
+              </option>
+            ))}
+          </SelectField>
         ) : null}
 
         <label htmlFor={labelId} className="sr-only">

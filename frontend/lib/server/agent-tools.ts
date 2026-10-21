@@ -43,7 +43,32 @@ export type AgentDeliverable = {
   file: boolean;
   formats: FileFormat[];
   brief: string;
+  /** Modèle du groupe retenu par l'outil use_template. */
+  templateId?: string;
 };
+
+export type AgentTemplateOption = {
+  id: string;
+  nom: string;
+  description: string;
+  format: "docx" | "pptx" | "xlsx";
+};
+
+const USE_TEMPLATE_TOOL = {
+  type: "function",
+  function: {
+    name: "use_template",
+    description:
+      "Produit le livrable à partir d'un modèle officiel du groupe (catalogue fourni). À appeler quand l'utilisateur cite un modèle, une trame ou un document type qui figure au catalogue.",
+    parameters: {
+      type: "object",
+      properties: {
+        modele: { type: "string", description: "Identifiant ou nom exact du modèle dans le catalogue." },
+      },
+      required: ["modele"],
+    },
+  },
+} as const;
 
 export type AgentPrepResult = {
   chunks: RetrievedChunk[];
@@ -123,9 +148,17 @@ export async function runAgentToolRound(input: {
   history: HistoryTurn[];
   mode: AgentMode;
   seed: AgentDeliverable;
+  templates?: AgentTemplateOption[];
   signal?: AbortSignal;
 }): Promise<AgentPrepResult> {
   const deliverable: AgentDeliverable = { ...input.seed, formats: [...input.seed.formats] };
+  const templates = input.templates ?? [];
+  const tools = templates.length ? [...AGENT_TOOLS, USE_TEMPLATE_TOOL] : AGENT_TOOLS;
+  const catalogue = templates.length
+    ? `Catalogue des modèles du groupe (use_template) :\n${templates
+        .map((item) => `- ${item.id} · ${item.nom} (${item.format})${item.description ? ` — ${item.description}` : ""}`)
+        .join("\n")}`
+    : "";
   const chunks: RetrievedChunk[] = [];
   const notes: string[] = [];
   const endpoint = resolveLlmEndpoint();
@@ -153,6 +186,10 @@ export async function runAgentToolRound(input: {
         "Pour les documents et la mise en forme, tu t'appuies sur le dernier Claude et les skills Anthropic office.",
         "Tu peux enchaîner plusieurs outils. N'invente aucun fait interne.",
         "Si aucune action n'est utile, réponds simplement OK sans outil.",
+        catalogue
+          ? "Si la demande cite un modèle, une trame ou un document type du catalogue : appelle use_template (en plus de prepare_deliverable)."
+          : "",
+        catalogue ? `\n${catalogue}\n` : "",
         skills ? `\n${skills}` : "",
       ]
         .filter(Boolean)
@@ -175,7 +212,7 @@ export async function runAgentToolRound(input: {
         model,
         temperature: 0.2,
         max_completion_tokens: 800,
-        tools: AGENT_TOOLS,
+        tools,
         tool_choice: "auto",
         messages,
       },
@@ -207,7 +244,10 @@ export async function runAgentToolRound(input: {
       } catch {
         args = {};
       }
-      const output = await runAgentTool(call.function.name, args, chunks, deliverable);
+      const output =
+        call.function.name === "use_template"
+          ? chooseTemplate(args, templates, deliverable)
+          : await runAgentTool(call.function.name, args, chunks, deliverable);
       notes.push(`${call.function.name}: ${output.slice(0, 200)}`);
       messages.push({
         role: "tool",
@@ -218,6 +258,22 @@ export async function runAgentToolRound(input: {
   }
 
   return { chunks: dedupeChunks(chunks), deliverable, notes };
+}
+
+function chooseTemplate(
+  args: Record<string, unknown>,
+  templates: AgentTemplateOption[],
+  deliverable: AgentDeliverable,
+): string {
+  const wanted = typeof args.modele === "string" ? args.modele.trim().toLowerCase() : "";
+  const found =
+    templates.find((item) => item.id.toLowerCase() === wanted) ??
+    templates.find((item) => item.nom.trim().toLowerCase() === wanted);
+  if (!found) return "Modèle absent du catalogue : le livrable suivra la charte SOFICAU.";
+  deliverable.templateId = found.id;
+  deliverable.file = true;
+  if (!deliverable.formats.includes(found.format)) deliverable.formats.unshift(found.format);
+  return `Modèle « ${found.nom} » retenu (${found.format}). Rédige le contenu ; la mise en page viendra du modèle.`;
 }
 
 async function runAgentTool(

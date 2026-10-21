@@ -33,9 +33,11 @@ function isDocumentSpec(full: string, body: string): boolean {
   if (!text.startsWith("{")) return false;
   try {
     const raw = JSON.parse(text) as Record<string, unknown>;
-    return Boolean(raw.design || raw.miseEnForme || raw.titre || raw.title || raw.sections || raw.primaire);
+    return Boolean(
+      raw.design || raw.miseEnForme || raw.titre || raw.title || raw.sections || raw.primaire || raw.champs || raw.lignes,
+    );
   } catch {
-    return /"(?:design|miseEnForme|titre|title|primaire|policeTitre)"/.test(text);
+    return /"(?:design|miseEnForme|titre|title|primaire|policeTitre|champs|lignes)"/.test(text);
   }
 }
 

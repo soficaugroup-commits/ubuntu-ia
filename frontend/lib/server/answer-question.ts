@@ -20,6 +20,12 @@ import { generateChatFiles } from "@/lib/server/generate-chat-file";
 import { generateChatImage } from "@/lib/server/generate-image";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
 import {
+  listTemplatesForUser,
+  loadTemplateForUser,
+  matchTemplate,
+  templatePromptBrief,
+} from "@/lib/server/templates";
+import {
   formatMemoryForPrompt,
   immediateFactsFromQuestion,
   listUserMemory,
@@ -28,7 +34,9 @@ import type { MemoryFact } from "@/lib/types";
 import type {
   ChatAttachment,
   ChatTools,
+  DocumentTemplate,
   FileFormat,
+  TemplateFormat,
   GeneratedFile,
   GeneratedImage,
   SourceCitation,
@@ -55,6 +63,11 @@ const INTERNAL_TOPIC =
 const EXCERPT_CHARS = 280;
 const WEB_ANSWER_MS = 150_000;
 const DOCS_ANSWER_MS = 50_000;
+const TEMPLATE_WORDS = /\b(mod[eè]le|trame|gabarit|canevas|template)\b/i;
+
+function templateFormatIn(formats: FileFormat[]): TemplateFormat | undefined {
+  return formats.find((item): item is TemplateFormat => item === "docx" || item === "pptx" || item === "xlsx");
+}
 
 export type RetrievedChunk = {
   document_id: string;
@@ -190,6 +203,16 @@ export async function* streamAnswerQuestion(
     requestFile(question, tools, prepared.length) ||
     formats.length > 0;
 
+  const userId = memoryContext?.userId;
+  const catalogue =
+    userId && !tools.modeleId && (plan.needTools || TEMPLATE_WORDS.test(question))
+      ? await listTemplatesForUser(userId).catch((error) => {
+          console.error("[chat] modèles", error);
+          return [] as DocumentTemplate[];
+        })
+      : [];
+  let agentTemplateId: string | undefined;
+
   if (plan.needTools) {
     yield step("tools", steps.stepsTools, "running");
     const prep = await runAgentToolRound({
@@ -203,6 +226,7 @@ export async function* streamAnswerQuestion(
         formats,
         brief: "",
       },
+      templates: catalogue,
       signal,
     }).catch((error) => {
       console.error("[chat] agent-tools", error);
@@ -221,10 +245,28 @@ export async function* streamAnswerQuestion(
         if (!formats.includes(format)) formats.push(format);
       }
       if (fileWanted && !formats.length) formats = ["pdf"];
+      agentTemplateId = prep.deliverable.templateId;
       yield step("tools", steps.stepsToolsDone, "done");
     } else {
       yield step("tools", steps.stepsToolsDone, "empty");
     }
+  }
+
+  const templateId =
+    tools.modeleId ?? agentTemplateId ?? matchTemplate(question, catalogue, templateFormatIn(formats))?.id;
+  const template = userId && templateId
+    ? await loadTemplateForUser(userId, templateId).catch((error) => {
+        console.error("[chat] modèle", error);
+        return null;
+      })
+    : null;
+  throwIfAborted(signal);
+  if (template) {
+    fileWanted = true;
+    formats = [template.template.format, ...formats.filter((item) => item !== template.template.format && item === "pdf")];
+    yield step("template", interpolate(steps.stepsTemplate, { name: template.template.nom }), "done");
+  } else if (tools.modeleId) {
+    yield step("template", steps.stepsTemplateUnavailable, "error");
   }
 
   if (plan.needWeb) {
@@ -266,6 +308,7 @@ export async function* streamAnswerQuestion(
           memory: formatMemoryForPrompt(memory),
           agentMode: plan.mode,
           useWeb: plan.needWeb,
+          templateBrief: template ? templatePromptBrief(template.template) : undefined,
         },
         (text) => {
           if (!writing) {
@@ -344,7 +387,22 @@ export async function* streamAnswerQuestion(
       formats: formats.length ? formats : ["pdf"],
       attachments: prepared,
       userId: memoryContext?.userId,
-      onProgress: (phase, format) => {
+      template: template
+        ? { format: template.template.format, bytes: template.bytes, nom: template.template.nom }
+        : undefined,
+      onProgress: (phase, format, detail) => {
+        if (phase === "template-missing" && detail) {
+          queue.push(step("template-missing", interpolate(steps.stepsTemplateMissing, { fields: detail }), "empty"));
+        }
+        if (phase === "template-fallback" && format) {
+          queue.push(
+            step(
+              "template-fallback",
+              interpolate(steps.stepsTemplateFallback, { format: formatLabel(format) }),
+              "error",
+            ),
+          );
+        }
         if (phase === "content") {
           queue.push(step("file", steps.stepsFileContent, "running"));
         }
@@ -529,6 +587,7 @@ async function completeAnswer(
     memory?: string;
     agentMode?: "answer" | "task" | "hybrid";
     useWeb?: boolean;
+    templateBrief?: string;
   },
   onToken: (text: string) => void,
   onActivity: (kind: "web_search" | "web_fetch") => void,
@@ -739,6 +798,7 @@ function answerMessages(
     memory?: string;
     agentMode?: "answer" | "task" | "hybrid";
     useWeb?: boolean;
+    templateBrief?: string;
   },
 ): ChatTurn[] {
   const internalCount = chunks.length;
@@ -760,7 +820,7 @@ function answerMessages(
         memory: extras.memory,
         agentMode: extras.agentMode,
         documentSkills,
-      }),
+      }) + (extras.templateBrief ? `\n\n${extras.templateBrief}` : ""),
     },
   ];
 

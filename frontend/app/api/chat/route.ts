@@ -144,6 +144,7 @@ export async function POST(request: Request) {
                 : body.tools?.research
                   ? true
                   : undefined,
+            modeleId: asTemplateId(body.tools?.modeleId),
           },
           body.attachments ?? [],
           { userId: actor.id },
@@ -273,6 +274,10 @@ function titleFromQuestion(question: string): string {
 function titleFromMessages(messages: ChatMessage[]): string {
   const first = messages.find((item) => item.role === "user");
   return first ? titleFromQuestion(first.content) : "";
+}
+
+function asTemplateId(value: unknown): string | undefined {
+  return typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value) ? value : undefined;
 }
 
 function mergeTurn(

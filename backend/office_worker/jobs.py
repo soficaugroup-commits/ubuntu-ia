@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from office_worker.config import settings
+from office_worker.config import resolve_bucket, settings
 from office_worker import db as store
 
 SKILLS = Path(__file__).resolve().parents[2] / ".agents" / "skills"
@@ -25,12 +25,16 @@ def run_job(job: dict[str, Any], work: Path) -> dict[str, Any]:
     raise ValueError(f"Type de job inconnu : {kind}")
 
 
+def _bucket(job: dict[str, Any]) -> str:
+    return resolve_bucket(job, settings.storage_bucket)
+
+
 def _download(job: dict[str, Any], work: Path, name: str) -> Path:
     input_path = job.get("input_path")
     if not input_path:
         raise ValueError("input_path manquant.")
     dest = work / name
-    store.download_input(input_path, dest)
+    store.download_input(input_path, dest, _bucket(job))
     if dest.stat().st_size > settings.max_file_bytes:
         raise ValueError("Fichier trop volumineux pour le worker.")
     return dest
@@ -52,7 +56,7 @@ def validate_ooxml(job: dict[str, Any], work: Path) -> dict[str, Any]:
         if not pdfs:
             raise RuntimeError("LibreOffice n'a pas produit de PDF.")
         remote = f"{job['user_id']}/{job['id']}/validated.pdf"
-        store.upload_output(pdfs[0], remote, "application/pdf")
+        store.upload_output(pdfs[0], remote, "application/pdf", bucket=_bucket(job))
         return {"ok": True, "mode": "soffice", "output_path": remote}
 
     proc = subprocess.run(
@@ -94,7 +98,7 @@ def pptx_thumbnails(job: dict[str, Any], work: Path) -> dict[str, Any]:
     uploaded: list[str] = []
     for index, page in enumerate(pages[:30], start=1):
         remote = f"{job['user_id']}/{job['id']}/thumb-{index:02d}.jpg"
-        store.upload_output(page, remote, "image/jpeg")
+        store.upload_output(page, remote, "image/jpeg", bucket=_bucket(job))
         uploaded.append(remote)
     return {"ok": True, "thumbnails": uploaded, "count": len(uploaded)}
 
@@ -115,6 +119,7 @@ def xlsx_recalc(job: dict[str, Any], work: Path) -> dict[str, Any]:
         outputs[0],
         remote,
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        bucket=_bucket(job),
     )
     return {"ok": True, "output_path": remote}
 
@@ -149,6 +154,7 @@ def pptx_from_template(job: dict[str, Any], work: Path) -> dict[str, Any]:
         out,
         remote,
         "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        bucket=_bucket(job),
     )
     return {"ok": True, "output_path": remote, "replaced": applied}
 
@@ -172,7 +178,7 @@ def pdf_fill_form(job: dict[str, Any], work: Path) -> dict[str, Any]:
     with out.open("wb") as handle:
         writer.write(handle)
     remote = f"{job['user_id']}/{job['id']}/filled.pdf"
-    store.upload_output(out, remote, "application/pdf")
+    store.upload_output(out, remote, "application/pdf", bucket=_bucket(job))
     return {"ok": True, "output_path": remote, "fields": list(fields)}
 
 

@@ -52,6 +52,38 @@ export type ChatTools = {
   web?: boolean;
   /** false : pas de tour d'outils agent. true : forcer l'analyse approfondie. */
   research?: boolean;
+  /** Modèle du groupe choisi comme base du livrable (`modeles_documents.id`). */
+  modeleId?: string;
+};
+
+export type TemplateFormat = "docx" | "pptx" | "xlsx";
+
+export type TemplateField = {
+  nom: string;
+  type: "texte" | "boucle" | "nom_defini" | "tableau";
+  colonnes?: string[];
+};
+
+export type DocumentTemplate = {
+  id: string;
+  nom: string;
+  description: string;
+  format: TemplateFormat;
+  categorie: DocumentCategory | null;
+  champs: TemplateField[];
+  structure: {
+    titres?: string[];
+    tableaux?: number;
+    emplacementContenu?: boolean;
+    diapositives?: number;
+    dispositions?: string[];
+    feuilles?: string[];
+  };
+  actif: boolean;
+  /** Aperçu signé (miniature PowerPoint produite par le worker), quand il existe. */
+  apercuUrl: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type FileFormat =

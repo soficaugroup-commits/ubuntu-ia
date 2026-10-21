@@ -11,11 +11,21 @@ export function understandFromQuestion(question: string): Understanding {
   }
   return {
     objectif: text.slice(0, 400),
-    livrables: [],
+    livrables: deliverablesFromQuestion(text),
     contraintes: ["Ne pas inventer de fait interne."],
     infos_manquantes: missing,
     risques: [],
   };
+}
+
+/** Livrables cités dans la demande. Sans format explicite : un seul livrable générique. */
+export function deliverablesFromQuestion(question: string): string[] {
+  const items: string[] = [];
+  if (/\b(word|docx|note)\b/i.test(question)) items.push("une note Word");
+  if (/\b(powerpoint|pptx|diaporama|diapos?)\b/i.test(question)) items.push("un diaporama PowerPoint");
+  if (/\b(excel|xlsx|classeur)\b/i.test(question)) items.push("un classeur Excel");
+  if (/\bpdf\b/i.test(question)) items.push("un PDF");
+  return items.length ? items : ["le livrable demandé"];
 }
 
 export function understandingOf(raw: unknown, fallback: string): Understanding {

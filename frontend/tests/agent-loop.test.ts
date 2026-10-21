@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { planFromUnderstanding } from "@/lib/server/agent-loop/planner";
 import { advanceTask, type TaskStore } from "@/lib/server/agent-loop/runner";
 import { parsePlan, parseUnderstanding } from "@/lib/server/agent-loop/schema";
+import { draftFromContext, formatOf } from "@/lib/server/agent-loop/task-brief";
 import { defaultTools } from "@/lib/server/agent-loop/tools/registry";
+import { understandFromQuestion } from "@/lib/server/agent-loop/understand";
 import type { AgentTask } from "@/lib/types";
 
 function memoryStore(initial: AgentTask): TaskStore {
@@ -128,5 +130,45 @@ describe("Runner", () => {
     expect(again.task.plan[0].statut).toBe("faite");
     expect(again.task.plan[0].tentatives).toBe(1);
     expect(again.task.plan.some((step) => step.ordre > 1 && step.statut === "faite")).toBe(true);
+  });
+});
+
+const SCENARIO =
+  "Prépare une note de synthèse Word sur la procédure d'achat à partir des documents internes, puis un PowerPoint de 5 diapos";
+
+describe("Scénario note puis diaporama", () => {
+  it("propose deux livrables puis les marque prêts dans le journal", async () => {
+    const understood = understandFromQuestion(SCENARIO);
+    expect(understood.livrables).toEqual(["une note Word", "un diaporama PowerPoint"]);
+    expect(planFromUnderstanding(understood).map((step) => step.type)).toEqual([
+      "chercher",
+      "lire",
+      "rediger",
+      "verifier",
+      "livrer",
+      "livrer",
+    ]);
+    expect(formatOf("Produire un diaporama PowerPoint.")).toBe("pptx");
+    expect(draftFromContext("Note", [])).toContain("Aucun extrait interne");
+
+    const store = memoryStore(seed({ titre: "Procédure d'achat", objectif: SCENARIO }));
+    const tools = defaultTools([
+      {
+        name: "build_deliverable",
+        description: "Livrable simulé pour le scénario.",
+        risk: "ecriture",
+        async run(_args, ctx) {
+          const name = ctx.step.description.includes("PowerPoint") ? "procedure.pptx" : "procedure.docx";
+          ctx.task.contexte.fichiers = [...(ctx.task.contexte.fichiers ?? []), name];
+          return { ok: true, output: `Livrable prêt : ${name}` };
+        },
+      },
+    ]);
+    const result = await advanceTask(store, "t1", { autoAcceptPlan: true, tools, budgetMs: 30_000 });
+    expect(result.task.statut).toBe("terminee");
+    expect(result.task.contexte.fichiers).toEqual(["procedure.docx", "procedure.pptx"]);
+    expect(result.task.journal?.some((entry) => entry.type === "fait")).toBe(true);
+    expect(result.task.journal?.some((entry) => entry.type === "decision")).toBe(true);
+    expect(result.task.journal?.some((entry) => entry.type === "reste")).toBe(true);
   });
 });

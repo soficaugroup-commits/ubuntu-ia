@@ -3,6 +3,7 @@
  * Exécute un budget d'étapes (~240 s) et diffuse les événements en SSE.
  * Le plan doit déjà être validé (statut en_cours).
  */
+import { liveTools } from "@/lib/server/agent-loop/live-tools";
 import { advanceTask } from "@/lib/server/agent-loop/runner";
 import { supabaseTaskStore } from "@/lib/server/agent-loop/store";
 import { guardTaskWrite, ownedTask, rememberUse } from "@/lib/server/task-http";
@@ -40,7 +41,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
       try {
-        const result = await advanceTask(supabaseTaskStore(actor.id), id, { budgetMs: 240_000 });
+        const result = await advanceTask(supabaseTaskStore(actor.id), id, {
+          budgetMs: 240_000,
+          tools: liveTools(),
+        });
         for (const event of result.events) send(event);
         await rememberUse(actor.id);
       } catch (error) {

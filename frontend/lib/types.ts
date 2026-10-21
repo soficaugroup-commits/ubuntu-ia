@@ -256,6 +256,10 @@ export type TaskContext = {
   fichiers?: string[];
   sources?: string[];
   infosManquantes?: string[];
+  /** Extraits internes retenus pour la rédaction. */
+  extraits?: string[];
+  /** Brouillon Markdown relu avant la production des fichiers. */
+  brouillon?: string;
 };
 
 export type TaskStep = {

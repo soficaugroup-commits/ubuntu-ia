@@ -2,6 +2,41 @@
 
 ## Lot B — Cycle de travail
 
+### Plan B5 (avant code)
+
+- Outils réels pour `POST …/avancer` : recherche interne, lecture des extraits, brouillon,
+  relecture A3, génération Word/PowerPoint/Excel/PDF via `generateChatFiles`.
+- Les tests du runner gardent des outils simulés. Un scénario vitest rejoue
+  « note Word puis PowerPoint » jusqu'à deux livrables et un journal.
+- Le contexte conserve extraits, brouillon et noms de fichiers (pas les data-URL).
+- Pas de migration. `env.ts` non touché.
+
+### Bilan B5 (fait)
+
+- `liveTools` : recherche `match_document_chunks`, lecture, brouillon limité aux extraits,
+  relecture A3, puis `generateChatFiles` (docx/pptx/xlsx/pdf selon l'étape).
+  Les noms de fichiers sont gardés dans `contexte.fichiers` (pas les data-URL).
+- Scénario vitest : « Prépare une note de synthèse Word sur la procédure d'achat… puis un
+  PowerPoint de 5 diapos » → plan chercher/lire/rédiger/vérifier/livrer/livrer, validation
+  automatique du test, deux fichiers (`procedure.docx`, `procedure.pptx`), journal fait /
+  reste / décision. 34 tests.
+- tsc ✓. Les fichiers Office réels ne sont produits qu'après validation du plan dans le chat
+  (migration 016 appliquée). Le test simule la production ; le code d'exécution appelle
+  bien `generateChatFiles`.
+
+### Lot B — clôture
+
+**Fait** : tâches persistantes, boucle pas à pas, API, carte et panneau, livrables branchés.
+
+**Reste** : appliquer 015 et 016 ; vérifier dans le chat authentifié qu'un plan validé
+télécharge bien le Word et le PowerPoint.
+
+**Migrations** : 015 puis 016.
+
+**Variables** : aucune nouvelle.
+
+
+
 ### Plan B4 (avant code)
 
 - Une demande `longTask` crée une tâche et s'arrête au plan (pas de fichier dans le même tour).

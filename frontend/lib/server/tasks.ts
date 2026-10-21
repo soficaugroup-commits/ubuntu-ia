@@ -146,6 +146,8 @@ function asContext(value: unknown): TaskContext {
     fichiers: list("fichiers"),
     sources: list("sources"),
     infosManquantes: list("infosManquantes"),
+    extraits: list("extraits"),
+    brouillon: typeof row.brouillon === "string" ? row.brouillon : undefined,
   };
 }
 

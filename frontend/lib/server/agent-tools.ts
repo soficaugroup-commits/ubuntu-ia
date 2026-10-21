@@ -331,6 +331,10 @@ async function runAgentTool(
   return "Outil inconnu.";
 }
 
+export async function searchIndexedChunks(query: string): Promise<RetrievedChunk[]> {
+  return retrieveChunks(query);
+}
+
 async function retrieveChunks(query: string): Promise<RetrievedChunk[]> {
   const [vector] = await embedTexts([query]);
   const { data, error } = await supabaseAdmin().rpc("match_document_chunks", {

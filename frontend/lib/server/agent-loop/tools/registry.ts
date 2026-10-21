@@ -49,6 +49,15 @@ export function defaultTools(overrides: AgentTool[] = []): ToolRegistry {
       },
     },
     {
+      name: "read_sources",
+      description: "Retient les extraits déjà trouvés.",
+      risk: "lecture",
+      async run(_args, ctx) {
+        const count = ctx.task.contexte.extraits?.length ?? 0;
+        return { ok: true, output: count ? `${count} extraits retenus.` : "Aucun extrait à lire." };
+      },
+    },
+    {
       name: "draft_section",
       description: "Rédige une section à partir des faits établis.",
       risk: "ecriture",
@@ -80,6 +89,7 @@ export function defaultTools(overrides: AgentTool[] = []): ToolRegistry {
 
 export function toolForStep(type: TaskStep["type"]): string {
   if (type === "chercher") return "search_documents";
+  if (type === "lire") return "read_sources";
   if (type === "demander") return "ask_user";
   if (type === "rediger") return "draft_section";
   if (type === "livrer") return "build_deliverable";

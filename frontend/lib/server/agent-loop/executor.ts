@@ -6,7 +6,8 @@ export async function executeStep(
   step: TaskStep,
   tools: ToolRegistry,
 ): Promise<ToolResult> {
-  const name = toolForStep(step.type);
+  const named = typeof step.entree.outil === "string" ? step.entree.outil : "";
+  const name = tools.has(named) ? named : toolForStep(step.type);
   const tool = tools.get(name);
   if (!tool) return { ok: false, output: `Outil ${name} introuvable.` };
   if (tool.risk === "externe" && !step.necessiteValidation) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { outlookStatus, setOutlookEnabled } from "@/lib/server/connectors/connexions";
 import { isSessionActor, requireUser } from "@/lib/server/require-admin";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
 
@@ -35,12 +36,18 @@ export async function GET(request: Request) {
     .eq("user_id", actor.id)
     .eq("kind", "message")
     .gte("created_at", start.toISOString());
+  const outlook = await outlookStatus(actor.id).catch(() => ({
+    active: false,
+    configured: false,
+    compte: null,
+  }));
   return NextResponse.json({
     organisation,
     organisationId: orgId,
     quota,
     used: usage.count ?? 0,
     role: actor.role,
+    outlook,
   });
 }
 
@@ -52,7 +59,16 @@ export async function PATCH(request: Request) {
   if (actor.role !== "administrateur") {
     return NextResponse.json({ error: "Réservé aux administrateurs." }, { status: 403 });
   }
-  const body = (await request.json().catch(() => null)) as { quota?: number } | null;
+  const body = (await request.json().catch(() => null)) as { quota?: number; outlook?: boolean } | null;
+  if (typeof body?.outlook === "boolean") {
+    try {
+      await setOutlookEnabled(actor.id, body.outlook);
+      return NextResponse.json({ ok: true, outlook: body.outlook });
+    } catch (error) {
+      console.error("[reglages] outlook", error);
+      return NextResponse.json({ error: "Le connecteur n'a pas pu être modifié." }, { status: 500 });
+    }
+  }
   const quota = Number(body?.quota);
   if (!Number.isFinite(quota) || quota < 1 || quota > 10000) {
     return NextResponse.json({ error: "Indiquez un quota entre 1 et 10 000." }, { status: 400 });

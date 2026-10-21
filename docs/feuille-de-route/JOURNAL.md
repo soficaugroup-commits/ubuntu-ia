@@ -2,6 +2,33 @@
 
 ## Lot C — Branchements métier
 
+### Plan C2 (avant code)
+
+- Migration `018_connexions_outils.sql` : jetons chiffrés, fournisseur `microsoft` ou `google`
+  (Google non implémenté), colonne `organisations.fonctionnalites` (Outlook désactivé).
+- `crypto.ts` (AES-256-GCM), OAuth code + PKCE, `state` scellé 10 minutes.
+  Identifiants lus depuis `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`,
+  `MS_REDIRECT_URI`, `CONNECTOR_ENCRYPTION_KEY`. S'ils manquent, le connecteur répond
+  qu'il n'est pas configuré. Aucune valeur inventée. `env.ts` non modifié.
+- Outils `mail_search`, `mail_read`, `mail_summarize` (lecture), `mail_draft` (propose
+  si la matrice l'exige), `mail_send` (brouillon déjà approuvé uniquement).
+  Le texte des e-mails est encadré comme donnée non fiable.
+- Réglages : état, activation par un administrateur, déconnexion. Pas d'appel réseau en test.
+
+### Bilan C2 (fait)
+
+- OAuth Microsoft code + PKCE. Le `state` est chiffré (10 min) et porte l'identité, parce que
+  le retour Microsoft n'envoie pas le jeton de session du navigateur.
+- Jetons AES-256-GCM, jamais renvoyés. Déconnexion = suppression de la ligne.
+- Drapeau `fonctionnalites.outlook` désactivé par défaut. Sans les variables `MS_*` et
+  `CONNECTOR_ENCRYPTION_KEY`, la connexion répond 503.
+- Brouillon et envoi passent par une action approuvée. L'envoi utilise seulement `draftId`.
+  Le texte lu est encadré comme donnée non fiable. Google est prévu dans le schéma, pas codé.
+- Question ouverte : identifiants Entra ID (tenant, client, secret, redirect) et la clé de
+  chiffrement. À fournir par l'équipe avant toute connexion réelle.
+
+
+
 ### Plan C1 (avant code)
 
 - Migration `017_permissions_actions_audit.sql` : rôle `responsable`, matrice
@@ -152,11 +179,16 @@ télécharge bien le Word et le PowerPoint.
   `claim_tache` + RLS (lecture propriétaire / admin, écriture `service_role`). À jouer après 015.
 - `backend/db/017_permissions_actions_audit.sql` : rôle `responsable`, matrice des droits,
   délégations, actions proposées, journal d'audit immuable. À jouer après 016.
+- `backend/db/018_connexions_outils.sql` : jetons Outlook chiffrés + `organisations.fonctionnalites`.
+  À jouer après 017. Le connecteur reste désactivé tant que `fonctionnalites.outlook` n'est pas `true`.
 
 ## Variables d'environnement nouvelles (cumul)
 
 - `OFFICE_WORKER_URL` (déjà déclarée dans `render.yaml`) : désormais **lue par le front**. Vide → aucun job
   `validate_ooxml` / `xlsx_recalc` mis en file (la validation locale reste active). Renseignée → jobs envoyés.
+- `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MS_REDIRECT_URI`, `CONNECTOR_ENCRYPTION_KEY` :
+  connecteur Outlook. Toutes vides → connexion refusée. Ne pas inventer ces valeurs.
+  Même renseignées, l'organisation doit activer `fonctionnalites.outlook` dans Réglages.
 
 ## Questions ouvertes pour l'équipe
 

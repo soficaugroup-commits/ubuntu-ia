@@ -4,11 +4,13 @@ import { draftFromContext, formatOf } from "@/lib/server/agent-loop/task-brief";
 import { defaultTools, type ToolRegistry } from "@/lib/server/agent-loop/tools/registry";
 import { specFromMarkdown } from "@/lib/server/document-spec";
 import { reviewDeliverable } from "@/lib/server/document-review";
+import { outlookTools } from "@/lib/server/connectors/outlook-tools";
 import { generateChatFiles } from "@/lib/server/generate-chat-file";
 
 /** Outils branchés sur la base interne et les générateurs du lot A. */
 export function liveTools(): ToolRegistry {
   return defaultTools([
+    ...outlookTools(),
     {
       name: "search_documents",
       description: "Cherche dans les documents internes indexés.",

@@ -1,5 +1,24 @@
 # Journal d'exécution — Feuille de route Ubuntu IA
 
+## Lot B — Cycle de travail
+
+### Plan B1 (avant code)
+
+- Migration `backend/db/016_taches_agent.sql` : tables `taches`, `etapes_tache`, `journal_tache`,
+  index, RLS (lecture propriétaire + admin, écriture `service_role`), colonne `verrou_jusqua`
+  (prévue par B2) et fonction `claim_tache` (verrou anti-double exécution).
+- Types + accès serveur `lib/server/tasks.ts` (CRUD / journal) pour B2–B4, sans boucle d'agent.
+- Tests : constantes de statut et mapping d'une ligne.
+- Risque : 016 ne doit pas être jouée avant 015 ; `dossier_id` sans FK (lot D).
+
+### Bilan B1 (fait)
+
+- Migration `016_taches_agent.sql` : 3 tables, index, `verrou_jusqua`, `claim_tache`, RLS.
+- Accès serveur `lib/server/tasks.ts` + types publics. Tests de mapping (23 vitest).
+- tsc ✓, build ✓. Boucle d'agent (B2) pas encore branchée : le chat actuel est inchangé.
+
+---
+
 > Tenu par l'agent Cursor. Entrée la plus récente en haut.
 > Pour chaque lot : plan avant de coder, puis à la fin : Fait / Reste / Décisions / Migrations SQL à appliquer / Nouvelles variables d'environnement / Questions ouvertes.
 
@@ -8,6 +27,8 @@
 - `backend/db/015_modeles_documents.sql` : bucket privé `modeles-documents` (25 Mo) + table
   `public.modeles_documents` + RLS (lecture org / écriture admin) + politique Storage `service_role`.
   À jouer **avant** d'utiliser l'onglet admin « Modèles ».
+- `backend/db/016_taches_agent.sql` : tables `taches`, `etapes_tache`, `journal_tache` + fonction
+  `claim_tache` + RLS (lecture propriétaire / admin, écriture `service_role`). À jouer après 015.
 
 ## Variables d'environnement nouvelles (cumul)
 

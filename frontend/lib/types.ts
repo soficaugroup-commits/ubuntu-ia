@@ -218,6 +218,86 @@ export type MessageFeedback = {
   dateCreation: string;
 };
 
+export type TaskStatus =
+  | "cadrage"
+  | "plan_propose"
+  | "en_cours"
+  | "en_attente_utilisateur"
+  | "en_attente_validation"
+  | "terminee"
+  | "echouee"
+  | "annulee";
+
+export type TaskStepType =
+  | "chercher"
+  | "lire"
+  | "rediger"
+  | "verifier"
+  | "corriger"
+  | "livrer"
+  | "demander"
+  | "agir";
+
+export type TaskStepStatus = "a_faire" | "en_cours" | "faite" | "sautee" | "echouee" | "bloquee";
+
+export type TaskJournalType = "fait" | "reste" | "decision" | "question" | "reponse" | "erreur" | "validation";
+
+export type TaskBudget = {
+  maxEtapes?: number;
+  maxCout?: number;
+  echeance?: string;
+};
+
+export type TaskContext = {
+  faits?: string[];
+  decisions?: string[];
+  fichiers?: string[];
+  sources?: string[];
+  infosManquantes?: string[];
+};
+
+export type TaskStep = {
+  id: string;
+  ordre: number;
+  type: TaskStepType;
+  description: string;
+  statut: TaskStepStatus;
+  entree: Record<string, unknown>;
+  sortie: Record<string, unknown>;
+  necessiteValidation: boolean;
+  tentatives: number;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  erreur?: string | null;
+};
+
+export type TaskJournalEntry = {
+  id: string;
+  horodatage: string;
+  type: TaskJournalType;
+  contenu: string;
+  auteur: "agent" | "utilisateur";
+};
+
+export type AgentTask = {
+  id: string;
+  userId: string;
+  organisationId: string | null;
+  conversationId: string | null;
+  dossierId: string | null;
+  titre: string;
+  objectif: string;
+  statut: TaskStatus;
+  plan: TaskStep[];
+  contexte: TaskContext;
+  etapeCourante: number;
+  budget: TaskBudget;
+  createdAt: string;
+  updatedAt: string;
+  termineeAt: string | null;
+  journal?: TaskJournalEntry[];
+};
+
 export type AdminFeedback = MessageFeedback & {
   userId: string;
   userEmail: string;

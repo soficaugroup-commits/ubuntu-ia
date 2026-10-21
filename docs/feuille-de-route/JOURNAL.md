@@ -2,6 +2,26 @@
 
 ## Lot B — Cycle de travail
 
+### Plan B4 (avant code)
+
+- Une demande `longTask` crée une tâche et s'arrête au plan (pas de fichier dans le même tour).
+  Si la migration 016 n'est pas appliquée, le chat reprend le chemin habituel.
+- Carte dans le message (`tacheId`) : objectif, étapes, valider, répondre, valider une étape.
+- Panneau `Sheet` « Mes tâches » : en cours, en attente, terminées, reprise, journal fait/reste/décisions.
+- Textes dans `content/fr.ts`. Composants UI existants uniquement.
+
+### Bilan B4 (fait)
+
+- Une demande multi-étapes (`longTask`) crée une tâche et répond avec le plan, sans produire
+  de fichier dans le même tour. Si la table `taches` n'existe pas encore, le chat continue
+  comme avant.
+- Carte sous la réponse : étapes, validation du plan, réponse à une question, validation
+  d'étape, annulation. Panneau « Mes tâches » (fait / reste / décisions, bouton Reprendre).
+- tsc ✓, build ✓, 33 tests ✓. Pas vérifié dans le navigateur authentifié (la carte n'apparaît
+  qu'après la migration 016).
+- Limite : après validation, `avancer` exécute encore les outils génériques du registre
+  (pas `generateChatFiles`). Le branchement des vrais livrables est le sujet de B5.
+
 ### Plan B3 (avant code)
 
 - Persistance `persistTask` : étapes et journal écrits à chaque sauvegarde du runner

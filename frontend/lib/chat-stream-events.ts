@@ -17,6 +17,7 @@ export type ChatStreamEvent =
   | { type: "sources"; documents: SourceCitation[] }
   | { type: "images"; images: GeneratedImage[] }
   | { type: "files"; files: GeneratedFile[] }
+  | { type: "tache"; id: string }
   | {
       type: "fin";
       status: "answered" | "no_source" | "error";
@@ -60,6 +61,7 @@ export function isChatStreamEvent(value: unknown): value is ChatStreamEvent {
     type === "sources" ||
     type === "images" ||
     type === "files" ||
+    type === "tache" ||
     type === "fin" ||
     type === "erreur"
   );

@@ -184,6 +184,8 @@ export type ChatMessage =
       images?: GeneratedImage[];
       files?: GeneratedFile[];
       steps?: ChatStep[];
+      /** Tâche persistante proposée pour une mission multi-étapes. */
+      tacheId?: string;
       status: AssistantStatus;
       createdAt: string;
     };

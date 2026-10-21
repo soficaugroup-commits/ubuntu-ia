@@ -1,6 +1,9 @@
 import "server-only";
 import { prepareChatAttachments, type PreparedAttachment } from "@/lib/server/chat-attachments";
 import { planAgentTurn } from "@/lib/server/agent-plan";
+import { advanceTask } from "@/lib/server/agent-loop/runner";
+import { supabaseTaskStore } from "@/lib/server/agent-loop/store";
+import { createTask } from "@/lib/server/tasks";
 import { runAgentToolRound } from "@/lib/server/agent-tools";
 import { isStyleTransfer, pickStyleAttachment } from "@/lib/server/design-dna";
 import {
@@ -96,7 +99,7 @@ export async function answerQuestion(
   history: HistoryTurn[] = [],
   tools: ChatTools = {},
   attachments: ChatAttachment[] = [],
-  memoryContext?: { userId: string },
+  memoryContext?: { userId: string; conversationId?: string | null },
   signal?: AbortSignal,
 ): Promise<ChatAnswer> {
   let content = "";
@@ -133,7 +136,7 @@ export async function* streamAnswerQuestion(
   history: HistoryTurn[] = [],
   tools: ChatTools = {},
   attachments: ChatAttachment[] = [],
-  memoryContext?: { userId: string },
+  memoryContext?: { userId: string; conversationId?: string | null },
   signal?: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent> {
   const steps = copy.chat;
@@ -143,6 +146,17 @@ export async function* streamAnswerQuestion(
 
   yield step("plan", steps.stepsPlan, "running");
   yield step("plan", plan.label || steps.stepsPlanDone, "done");
+
+  if (plan.longTask && memoryContext?.userId) {
+    const mission = await openMission(memoryContext.userId, memoryContext.conversationId, question);
+    if (mission) {
+      const text = missionText(mission.objectif, mission.plan.map((item) => item.description));
+      yield { type: "tache", id: mission.id };
+      yield { type: "token", content: text };
+      yield { type: "fin", status: "answered", content: text };
+      return;
+    }
+  }
 
   if (attachments.length) {
     yield step("attachments", steps.stepsAttachments, "running");
@@ -1003,6 +1017,27 @@ function significantTokens(text: string): Set<string> {
       .toLowerCase()
       .match(/[\p{L}\p{N}]{3,}/gu) ?? [];
   return new Set(words.filter((word) => !STOP_WORDS.has(word)));
+}
+
+async function openMission(userId: string, conversationId: string | null | undefined, question: string) {
+  try {
+    const created = await createTask({
+      userId,
+      conversationId: conversationId ?? null,
+      titre: question.trim().slice(0, 80) || "Mission",
+      objectif: question.trim(),
+    });
+    const { task } = await advanceTask(supabaseTaskStore(userId), created.id, { budgetMs: 20_000 });
+    return task;
+  } catch (error) {
+    console.error("[chat] tâche", error);
+    return null;
+  }
+}
+
+function missionText(objectif: string, steps: string[]): string {
+  const plan = steps.map((item, index) => `${index + 1}. ${item}`).join("\n");
+  return `Je prends cette mission en charge. Aucune action à conséquence n'est lancée tant que le plan n'est pas validé.\n\nObjectif : ${objectif}\n\n${plan}`;
 }
 
 function stripCitationMarks(text: string): string {

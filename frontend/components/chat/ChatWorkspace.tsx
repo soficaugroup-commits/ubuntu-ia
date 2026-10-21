@@ -8,6 +8,8 @@ import { CopyAnswerButton } from "@/components/chat/CopyAnswerButton";
 import { FeedbackButtons } from "@/components/chat/FeedbackButtons";
 import { UserTurn } from "@/components/chat/UserTurn";
 import { GeneratedFiles } from "@/components/chat/GeneratedFiles";
+import { TaskCard } from "@/components/chat/TaskCard";
+import { TasksSheet } from "@/components/chat/TasksSheet";
 import { MemoryPanel } from "@/components/chat/MemoryPanel";
 import { SourceCitations } from "@/components/chat/SourceCitations";
 import { Alert } from "@/components/ui/Alert";
@@ -71,6 +73,7 @@ export function ChatWorkspace() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
   const [memoryFacts, setMemoryFacts] = useState<MemoryFact[]>([]);
   const [memoryState, setMemoryState] = useState<"idle" | "loading" | "ready" | "error">(
     "idle",
@@ -581,6 +584,7 @@ export function ChatWorkspace() {
       }}
       onCreate={startConversation}
       onMemory={() => void openMemory()}
+      onTasks={() => setTasksOpen(true)}
       onRename={(id, title) => renameActiveConversation(id, title)}
       onDelete={(id) => removeConversation(id)}
     />
@@ -614,6 +618,14 @@ export function ChatWorkspace() {
             <IconHistory />
           </Button>
           <h1 className="min-w-0 flex-1 truncate font-semibold">{copy.chat.pageTitle}</h1>
+          <Button
+            variant="secondary"
+            aria-label={copy.chat.tasksOpen}
+            tooltip={copy.chat.tipTasksOpen}
+            onClick={() => setTasksOpen(true)}
+          >
+            {copy.chat.tasksOpen}
+          </Button>
           <Button
             variant="secondary"
             size="icon"
@@ -715,6 +727,14 @@ export function ChatWorkspace() {
         {history}
       </Sheet>
       <Sheet
+        open={tasksOpen}
+        title={copy.chat.tasks.title}
+        side="right"
+        onClose={() => setTasksOpen(false)}
+      >
+        <TasksSheet />
+      </Sheet>
+      <Sheet
         open={memoryOpen}
         title={copy.chat.memoryTitle}
         side="right"
@@ -746,6 +766,7 @@ function ConversationHistory({
   onSelect,
   onCreate,
   onMemory,
+  onTasks,
   onRename,
   onDelete,
 }: {
@@ -754,6 +775,7 @@ function ConversationHistory({
   onSelect: (id: string) => void;
   onCreate: () => void;
   onMemory: () => void;
+  onTasks: () => void;
   onRename: (
     id: string,
     title: string,
@@ -964,6 +986,14 @@ function ConversationHistory({
         <Button
           className="w-full"
           variant="secondary"
+          tooltip={copy.chat.tipTasksOpen}
+          onClick={onTasks}
+        >
+          {copy.chat.tasksOpen}
+        </Button>
+        <Button
+          className="mt-2 w-full"
+          variant="secondary"
           tooltip={copy.chat.tipMemoryOpen}
           onClick={onMemory}
         >
@@ -1140,6 +1170,7 @@ function AssistantTurn({
         sourceCount={message.sources.length}
       />
       <GeneratedFiles files={message.files} images={message.images} />
+      {message.tacheId ? <TaskCard taskId={message.tacheId} /> : null}
       <SourceCitations messageId={message.id} sources={message.sources} />
       <div className="mt-4">
         <FeedbackButtons
@@ -1174,6 +1205,9 @@ function reduceAssistant(
   }
   if (event.type === "files") {
     return { ...message, files: event.files };
+  }
+  if (event.type === "tache") {
+    return { ...message, tacheId: event.id };
   }
   if (event.type === "erreur") {
     return message;

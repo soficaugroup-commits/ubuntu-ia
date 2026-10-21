@@ -244,6 +244,7 @@ function parseMessage(value: unknown): ChatMessage | null {
       sources: parseSources(row.sources),
       images: parseImages(row.images),
       files: parseFiles(row.files),
+      tacheId: typeof row.tacheId === "string" ? row.tacheId : undefined,
       status:
         row.status === "answered" ||
         row.status === "no_source" ||
@@ -444,6 +445,7 @@ function serializeMessage(message: ChatMessage): ChatMessage {
     sources: message.sources,
     images: message.images,
     files: message.files,
+    tacheId: message.tacheId,
     status: message.status,
     createdAt: message.createdAt,
   };

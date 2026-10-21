@@ -125,6 +125,7 @@ export async function POST(request: Request) {
       let sources: SourceCitation[] = [];
       let images: GeneratedImage[] | undefined;
       let files: GeneratedFile[] | undefined;
+      let tacheId: string | undefined;
       let status: "answered" | "no_source" | "error" = "answered";
       let finished = false;
 
@@ -147,7 +148,7 @@ export async function POST(request: Request) {
             modeleId: asTemplateId(body.tools?.modeleId),
           },
           body.attachments ?? [],
-          { userId: actor.id },
+          { userId: actor.id, conversationId },
           abort.signal,
         )) {
           if (abort.signal.aborted) break;
@@ -155,6 +156,7 @@ export async function POST(request: Request) {
           else if (event.type === "sources") sources = event.documents;
           else if (event.type === "images") images = event.images;
           else if (event.type === "files") files = event.files;
+          else if (event.type === "tache") tacheId = event.id;
           else if (event.type === "fin") {
             if (event.status === "answered" || event.status === "no_source") {
               status = event.status;
@@ -202,6 +204,7 @@ export async function POST(request: Request) {
           sources,
           images,
           files,
+          tacheId,
           status,
           createdAt: new Date().toISOString(),
         };

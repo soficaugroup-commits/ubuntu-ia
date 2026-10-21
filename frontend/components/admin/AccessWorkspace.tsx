@@ -44,7 +44,9 @@ type AccountAction = {
 };
 
 function roleLabel(role: UserRole): string {
-  return role === "administrateur" ? copy.admin.access.roleAdmin : copy.admin.access.roleUser;
+  if (role === "administrateur") return copy.admin.access.roleAdmin;
+  if (role === "responsable") return copy.admin.access.roleLead;
+  return copy.admin.access.roleUser;
 }
 
 function invitationStatus(item: Invitation): "pending" | "expired" | "accepted" {
@@ -415,6 +417,7 @@ export function AccessWorkspace() {
             onChange={(value) => setRole(value as UserRole)}
           >
             <option value="utilisateur">{copy.admin.access.roleUser}</option>
+            <option value="responsable">{copy.admin.access.roleLead}</option>
             <option value="administrateur">{copy.admin.access.roleAdmin}</option>
           </SelectField>
           {errors.form ? (
@@ -675,6 +678,7 @@ export function AccessWorkspace() {
             onChange={(value) => setEditRole(value as UserRole)}
           >
             <option value="utilisateur">{copy.admin.access.roleUser}</option>
+            <option value="responsable">{copy.admin.access.roleLead}</option>
             <option value="administrateur">{copy.admin.access.roleAdmin}</option>
           </SelectField>
           {editErrors.form ? (

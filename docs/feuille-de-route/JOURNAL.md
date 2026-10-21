@@ -1,5 +1,30 @@
 # Journal d'exécution — Feuille de route Ubuntu IA
 
+## Lot C — Branchements métier
+
+### Plan C1 (avant code)
+
+- Migration `017_permissions_actions_audit.sql` : rôle `responsable`, matrice
+  `permissions_actions`, délégations, actions proposées, journal d'audit immuable, RLS.
+- `permissions.ts` / `actions.ts` : décision de droit et machine d'état (hash de la charge,
+  une seule exécution, expiration). Tests sans base.
+- Admin : onglets Droits et Journal. Le rôle responsable est proposé dans Accès.
+- Aucun connecteur Outlook/iTrack dans ce sous-lot. `env.ts` non touché.
+- Question ouverte : pas d'identifiants Microsoft ni d'API iTrack — les connecteurs restent
+  pour C2/C3, désactivés tant que les variables ne sont pas fournies.
+
+### Bilan C1 (fait)
+
+- Migration 017 : rôle `responsable`, matrice (lecture autorisée, écriture à valider,
+  suppression interdite), délégations, actions proposées, journal d'audit immuable (trigger).
+- Décision de droit et machine d'état testées (39 tests) : délégation expirée ignorée,
+  charge modifiée refusée, double exécution refusée.
+- Admin : `/admin/droits` et `/admin/journal` (export CSV). Accès propose le rôle responsable.
+- Pas de carte « Approuver » dans le chat tant qu'aucun connecteur ne propose d'action (C2).
+- tsc ✓, build ✓. `env.ts` non touché. Aucune variable nouvelle.
+
+
+
 ## Lot B — Cycle de travail
 
 ### Plan B5 (avant code)
@@ -125,6 +150,8 @@ télécharge bien le Word et le PowerPoint.
   À jouer **avant** d'utiliser l'onglet admin « Modèles ».
 - `backend/db/016_taches_agent.sql` : tables `taches`, `etapes_tache`, `journal_tache` + fonction
   `claim_tache` + RLS (lecture propriétaire / admin, écriture `service_role`). À jouer après 015.
+- `backend/db/017_permissions_actions_audit.sql` : rôle `responsable`, matrice des droits,
+  délégations, actions proposées, journal d'audit immuable. À jouer après 016.
 
 ## Variables d'environnement nouvelles (cumul)
 

@@ -73,7 +73,11 @@ export function AppShell({ children }: Props) {
   const displayName =
     [user.prenom, user.nom].filter(Boolean).join(" ") || copy.nav.unnamed;
   const roleLabel =
-    user.role === "administrateur" ? copy.nav.roleAdmin : copy.nav.roleUser;
+    user.role === "administrateur"
+      ? copy.nav.roleAdmin
+      : user.role === "responsable"
+        ? copy.nav.roleLead
+        : copy.nav.roleUser;
 
   return (
     <div className="app-frame app-frame-locked flex min-h-0 flex-1 flex-col bg-canvas">

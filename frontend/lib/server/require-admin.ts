@@ -41,7 +41,7 @@ export async function requireUser(
     .maybeSingle();
 
   const role = profile.data?.role;
-  if (!profile.data || (role !== "administrateur" && role !== "utilisateur")) {
+  if (!profile.data || (role !== "administrateur" && role !== "responsable" && role !== "utilisateur")) {
     return { error: "Session expirée. Reconnectez-vous.", status: 401 };
   }
   if (profile.data.statut === "suspendu") {

@@ -1,4 +1,4 @@
-export type UserRole = "administrateur" | "utilisateur";
+export type UserRole = "administrateur" | "responsable" | "utilisateur";
 export type AccountStatus = "actif" | "suspendu";
 
 export type SessionUser = {

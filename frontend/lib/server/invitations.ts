@@ -25,11 +25,12 @@ export type InvitationRow = {
 
 export const ROLE_LABEL: Record<UserRole, string> = {
   administrateur: "Administrateur",
+  responsable: "Responsable",
   utilisateur: "Collaborateur",
 };
 
 function asRole(value: unknown): UserRole | null {
-  if (value === "administrateur" || value === "utilisateur") return value;
+  if (value === "administrateur" || value === "responsable" || value === "utilisateur") return value;
   return null;
 }
 

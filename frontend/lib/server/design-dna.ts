@@ -1,5 +1,6 @@
 import { inflateRawSync, inflateSync } from "zlib";
 import JSZip from "jszip";
+import { SOFICAU_FONTS, SOFICAU_TABLE } from "@/lib/server/brand/soficau-theme";
 import { BRAND } from "@/lib/server/document-spec";
 
 export type StyleFormat = "docx" | "pptx" | "xlsx" | "pdf" | "image" | "unknown";
@@ -60,10 +61,10 @@ export function defaultDna(): DesignDna {
     muted: BRAND.mid,
     inverse: BRAND.white,
     chartColors: [...BRAND.chartColors],
-    headingFont: "Calibri",
-    bodyFont: "Calibri",
-    tableHeaderFill: BRAND.navy,
-    tableBodyFill: BRAND.canvas,
+    headingFont: SOFICAU_FONTS.office,
+    bodyFont: SOFICAU_FONTS.office,
+    tableHeaderFill: SOFICAU_TABLE.headerFill,
+    tableBodyFill: SOFICAU_TABLE.zebraFill,
     zebra: true,
     frozenSource: false,
     assumptions: [],

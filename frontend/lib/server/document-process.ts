@@ -2,6 +2,7 @@ import "server-only";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { SOFICAU_COLORS } from "@/lib/server/brand/soficau-theme";
 import type { DesignDna } from "@/lib/server/design-dna";
 import { loadDocumentSkillPrompt } from "@/lib/server/document-skills";
 import type { DocumentSpec } from "@/lib/server/document-spec";
@@ -72,16 +73,24 @@ export function isLong(spec: DocumentSpec): boolean {
 
 export function ensureContrast(dna: DesignDna): DesignDna {
   const next = { ...dna, chartColors: [...dna.chartColors] };
+  const { navy, white, canvas } = SOFICAU_COLORS;
   if (contrast(next.text, next.canvas) < 4.5) {
-    next.text = luminance(next.canvas) > 0.45 ? "17405B" : "FFFFFF";
+    next.text = luminance(next.canvas) > 0.45 ? navy : white;
   }
   if (contrast(next.inverse, next.primary) < 4.5) {
-    next.inverse = luminance(next.primary) > 0.45 ? "17405B" : "FFFFFF";
+    next.inverse = luminance(next.primary) > 0.45 ? navy : white;
   }
   if (contrast(next.accent, next.primary) < 3) {
-    next.accent = luminance(next.primary) > 0.45 ? "17405B" : "E8EEF2";
+    next.accent = luminance(next.primary) > 0.45 ? navy : canvas;
+  }
+  if (contrast(next.inverse, next.tableHeaderFill) < 4.5) {
+    next.tableHeaderFill = next.primary;
   }
   return next;
+}
+
+export function contrastRatio(foreground: string, background: string): number {
+  return contrast(foreground, background);
 }
 
 export async function stageDeliverable(name: string, bytes: Uint8Array): Promise<Buffer> {

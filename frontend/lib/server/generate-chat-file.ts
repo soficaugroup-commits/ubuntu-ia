@@ -27,6 +27,7 @@ import {
   type GuideBrief,
 } from "@/lib/server/document-process";
 import { storeGeneratedFile } from "@/lib/server/generated-files";
+import { validateGenerated } from "@/lib/server/office-validate";
 import type { FileFormat, GeneratedFile } from "@/lib/types";
 
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -62,7 +63,7 @@ export async function generateChatFiles(input: {
   attachments: PreparedAttachment[];
   userId?: string;
   onProgress?: (
-    phase: "content" | "build",
+    phase: "content" | "build" | "invalid",
     format?: FileFormat,
   ) => void | Promise<void>;
 }): Promise<GeneratedFile[]> {
@@ -91,7 +92,7 @@ export async function generateChatFiles(input: {
       await input.onProgress?.("build", format);
       let bytes = await buildFormat(format, markdown, spec, input.attachments, job, guide);
       if (!bytes || bytes.length === 0 || bytes.length > MAX_BYTES) continue;
-      let produced = await textFromGenerated(format, bytes).catch(() => "");
+      const produced = await textFromGenerated(format, bytes).catch(() => "");
       let check = verifyContent(tokens, produced);
       if (!check.ok && (format === "pptx" || format === "docx" || format === "pdf")) {
         const retry = await buildFormat(format, markdown, withLiteralLayouts(spec), input.attachments, job, guide);
@@ -104,6 +105,17 @@ export async function generateChatFiles(input: {
       }
       if (!check.ok) {
         console.warn("[chat] content-guard", format, check.missing);
+      }
+      let validation = await validateGenerated(format, bytes);
+      if (!validation.ok) {
+        console.error("[chat] validation", format, validation.problems);
+        bytes = await buildFormat(format, markdown, withLiteralLayouts(spec), input.attachments, job, guide);
+        validation = await validateGenerated(format, bytes);
+      }
+      if (!validation.ok) {
+        console.error("[chat] validation après régénération", format, validation.problems);
+        await input.onProgress?.("invalid", format);
+        continue;
       }
       const staged = await stageDeliverable(`${stem}.${EXT[format]}`, bytes);
       const stored = await storeGeneratedFile({

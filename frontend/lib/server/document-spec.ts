@@ -1,3 +1,5 @@
+import { SOFICAU_CHART_COLORS, SOFICAU_COLORS } from "@/lib/server/brand/soficau-theme";
+
 export type ChartKind = "bar" | "column" | "line" | "pie";
 
 export type DocChart = {
@@ -75,13 +77,13 @@ export type DocumentSpec = {
 };
 
 export const BRAND = {
-  navy: "17405B",
-  gold: "AD8859",
-  canvas: "E8EEF2",
-  mid: "3D6A82",
-  sand: "C4A574",
-  white: "FFFFFF",
-  chartColors: ["17405B", "AD8859", "3D6A82", "C4A574"],
+  navy: SOFICAU_COLORS.navy,
+  gold: SOFICAU_COLORS.gold,
+  canvas: SOFICAU_COLORS.canvas,
+  mid: SOFICAU_COLORS.mid,
+  sand: SOFICAU_COLORS.sand,
+  white: SOFICAU_COLORS.white,
+  chartColors: SOFICAU_CHART_COLORS,
 } as const;
 
 type MarkdownBlock =

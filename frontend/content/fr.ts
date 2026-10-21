@@ -309,6 +309,7 @@ export const copy = {
     stepsFileBuild: "Création du fichier {format}…",
     stepsFileDone: "Livrable prêt.",
     stepsFileError: "Le fichier n'a pas pu être généré.",
+    stepsFileInvalid: "Le fichier {format} n'a pas passé le contrôle technique, même après une seconde tentative : il n'est pas livré.",
     streamCaret: "Réponse en cours d'écriture",
     noSourceTitle: "Aucune source ne permet de répondre",
     noSourceBody:

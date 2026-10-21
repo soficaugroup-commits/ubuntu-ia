@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { SOFICAU_COLORS } from "@/lib/server/brand/soficau-theme";
 import type { ChartKind } from "@/lib/server/document-spec";
 
 export type SheetChart = {
@@ -121,7 +122,7 @@ function seriesXml(chart: SheetChart, sheet: string, column: number, index: numb
   const letter = col(column);
   const name = `${sheet}!$${letter}$${chart.headerRow}`;
   const values = `${sheet}!$${letter}$${chart.firstDataRow}:$${letter}$${chart.lastDataRow}`;
-  const color = chart.colors[index % chart.colors.length] || "17405B";
+  const color = chart.colors[index % chart.colors.length] || SOFICAU_COLORS.navy;
   const point =
     chart.kind === "pie"
       ? ""

@@ -1,4 +1,5 @@
 import { deflateSync } from "node:zlib";
+import { SOFICAU_CHART_COLORS, SOFICAU_COLORS } from "@/lib/server/brand/soficau-theme";
 import type { DocChart } from "@/lib/server/document-spec";
 
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, index) => {
@@ -7,14 +8,23 @@ const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, index) => {
   return crc >>> 0;
 });
 
-export function renderChartPng(chart: DocChart, colors: string[], width = 720, height = 380): Buffer {
-  const rgba = new Uint8Array(width * height * 4);
-  fillRect(rgba, width, 0, 0, width, height, hexRgb("FFFFFF"));
-  const palette = (colors.length ? colors : ["17405B", "AD8859", "3D6A82", "C4A574"]).map(hexRgb);
-  if (chart.kind === "pie") drawPie(rgba, width, height, chart, palette);
-  else if (chart.kind === "line") drawLine(rgba, width, height, chart, palette);
-  else drawColumns(rgba, width, height, chart, palette, chart.kind === "bar");
-  return encodePng(width, height, rgba);
+/** `scale` multiplie la résolution (2 = rendu net pour l'impression) sans changer les proportions. */
+export function renderChartPng(
+  chart: DocChart,
+  colors: string[],
+  width = 720,
+  height = 380,
+  scale = 1,
+): Buffer {
+  const w = Math.round(width * scale);
+  const h = Math.round(height * scale);
+  const rgba = new Uint8Array(w * h * 4);
+  fillRect(rgba, w, 0, 0, w, h, hexRgb(SOFICAU_COLORS.white));
+  const palette = (colors.length ? colors : [...SOFICAU_CHART_COLORS]).map(hexRgb);
+  if (chart.kind === "pie") drawPie(rgba, w, h, chart, palette);
+  else if (chart.kind === "line") drawLine(rgba, w, h, chart, palette, scale);
+  else drawColumns(rgba, w, h, chart, palette, chart.kind === "bar", scale);
+  return encodePng(w, h, rgba);
 }
 
 function drawColumns(
@@ -24,13 +34,17 @@ function drawColumns(
   chart: DocChart,
   palette: Rgb[],
   horizontal: boolean,
+  scale = 1,
 ) {
-  const pad = 36;
+  const pad = 36 * scale;
   const plotW = width - pad * 2;
   const plotH = height - pad * 2;
   const max = Math.max(1, ...chart.series.flatMap((series) => series.values));
   const groups = Math.max(1, chart.categories.length);
   const seriesCount = Math.max(1, chart.series.length);
+  const axis = hexRgb(SOFICAU_COLORS.rule);
+  if (horizontal) fillRect(rgba, width, pad - scale, pad, scale, plotH, axis);
+  else fillRect(rgba, width, pad, pad + plotH, plotW, scale, axis);
   if (horizontal) {
     const band = plotH / groups;
     chart.categories.forEach((_, group) => {
@@ -56,8 +70,8 @@ function drawColumns(
   });
 }
 
-function drawLine(rgba: Uint8Array, width: number, height: number, chart: DocChart, palette: Rgb[]) {
-  const pad = 36;
+function drawLine(rgba: Uint8Array, width: number, height: number, chart: DocChart, palette: Rgb[], scale = 1) {
+  const pad = 36 * scale;
   const plotW = width - pad * 2;
   const plotH = height - pad * 2;
   const max = Math.max(1, ...chart.series.flatMap((series) => series.values));
@@ -69,7 +83,7 @@ function drawLine(rgba: Uint8Array, width: number, height: number, chart: DocCha
       const y1 = pad + plotH - ((series.values[index] ?? 0) / max) * plotH;
       const x2 = pad + ((index + 1) / steps) * plotW;
       const y2 = pad + plotH - ((series.values[index + 1] ?? 0) / max) * plotH;
-      stroke(rgba, width, height, x1, y1, x2, y2, color);
+      stroke(rgba, width, height, x1, y1, x2, y2, color, 3 * scale);
     }
   });
 }
@@ -88,11 +102,22 @@ function drawPie(rgba: Uint8Array, width: number, height: number, chart: DocChar
   });
 }
 
-function stroke(rgba: Uint8Array, width: number, height: number, x1: number, y1: number, x2: number, y2: number, color: Rgb) {
+function stroke(
+  rgba: Uint8Array,
+  width: number,
+  _height: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  color: Rgb,
+  thickness = 3,
+) {
   const steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1)));
+  const half = thickness / 2;
   for (let step = 0; step <= steps; step += 1) {
     const t = step / steps;
-    fillRect(rgba, width, x1 + (x2 - x1) * t - 1.5, y1 + (y2 - y1) * t - 1.5, 3, 3, color);
+    fillRect(rgba, width, x1 + (x2 - x1) * t - half, y1 + (y2 - y1) * t - half, thickness, thickness, color);
   }
 }
 

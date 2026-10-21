@@ -1,10 +1,14 @@
 import "server-only";
 import PptxGenJS from "pptxgenjs";
+import { documentMarks } from "@/lib/server/brand/document-marks";
+import { SOFICAU_PRODUCT, SOFICAU_TABLE } from "@/lib/server/brand/soficau-theme";
 import { defaultDna, fitLogo, pptFont, type DesignDna } from "@/lib/server/design-dna";
-import { BRAND, type DocChart, type DocumentSpec, type DocSection, type SlideRatio } from "@/lib/server/document-spec";
+import type { DocChart, DocumentSpec, DocSection, SlideRatio } from "@/lib/server/document-spec";
 import { parseInline, plainInline } from "@/lib/server/rich-text";
 import { isLong } from "@/lib/server/document-process";
-import { linesOf, planSlides, statLines, type PlannedSlide } from "@/lib/server/slide-plan";
+import { BOXES, fitTitle, linesOf, planSlides, statLines, type PlannedSlide } from "@/lib/server/slide-plan";
+
+const CONTENT_MASTER = "SOFICAU_CONTENU";
 
 type PptSlide = ReturnType<PptxGenJS["addSlide"]>;
 
@@ -36,9 +40,10 @@ export async function buildPptx(
   const chrome = deckChrome(spec, theme);
   const deck = new PptxGenJS();
   deck.layout = RATIO[chrome.ratio].name;
-  deck.author = "Ubuntu IA";
+  deck.author = SOFICAU_PRODUCT;
   deck.title = plainInline(spec.title);
-  deck.subject = chrome.signature || "Ubuntu IA";
+  deck.subject = chrome.signature || SOFICAU_PRODUCT;
+  defineContentMaster(deck, spec, theme, chrome);
 
   if (chrome.cover) addCover(deck, spec, theme, chrome);
   if (isLong(spec)) addAgenda(deck, spec, theme, chrome);
@@ -54,12 +59,46 @@ export async function buildPptx(
   return output instanceof Uint8Array ? output : new Uint8Array(output as ArrayBuffer);
 }
 
+/** Masque commun des diapos de contenu : fond, filet doré, pied de page et numéro de diapo. */
+function defineContentMaster(deck: PptxGenJS, spec: DocumentSpec, theme: DesignDna, chrome: Chrome) {
+  const footer = [chrome.signature, plainInline(spec.title)].filter(Boolean).join("  ·  ").slice(0, 110);
+  deck.defineSlideMaster({
+    title: CONTENT_MASTER,
+    background: { color: theme.canvas },
+    objects: [
+      { rect: { x: 0.45, y: chrome.h - 0.44, w: chrome.w - 0.9, h: 0.015, fill: { color: theme.accent } } },
+      {
+        text: {
+          text: footer,
+          options: {
+            x: 0.45,
+            y: chrome.h - 0.4,
+            w: chrome.w - 2.6,
+            h: 0.28,
+            margin: 0,
+            fontFace: theme.bodyFont,
+            fontSize: 9,
+            color: theme.muted,
+          },
+        },
+      },
+    ],
+    slideNumber: {
+      x: chrome.w - 0.95,
+      y: chrome.h - 0.4,
+      w: 0.5,
+      h: 0.28,
+      fontFace: theme.bodyFont,
+      fontSize: 10,
+      bold: true,
+      color: theme.primary,
+      align: "right",
+    },
+  });
+}
+
 function deckChrome(spec: DocumentSpec, theme: DesignDna): Chrome {
-  const brand =
-    theme.primary.toUpperCase() === BRAND.navy &&
-    theme.accent.toUpperCase() === BRAND.gold &&
-    !theme.headerLabel &&
-    !theme.sourceName;
+  const marks = documentMarks(spec, theme);
   const design = spec.design;
   const ratio = design?.ratio ?? "16:9";
   const size = RATIO[ratio];
@@ -68,8 +107,8 @@ function deckChrome(spec: DocumentSpec, theme: DesignDna): Chrome {
     close: design?.conclusion !== false,
     motif: design?.motif !== false,
     ratio,
-    eyebrow: design?.marque?.trim() || theme.headerLabel?.trim() || (brand ? "UBUNTU IA" : ""),
-    signature: design?.signature?.trim() || (brand ? "SOFICAU Ubuntu Group" : theme.sourceName || ""),
+    eyebrow: marks.eyebrow,
+    signature: marks.signature,
     w: size.w,
     h: size.h,
   };
@@ -201,27 +240,21 @@ function addPlannedSlide(
   options: { synthesized?: boolean; images?: SlideImage[] },
   imageUsed: boolean,
 ) {
-  const slide = deck.addSlide();
   const layout = planned.layout;
   if (layout === "divider") {
+    const slide = deck.addSlide();
     addDivider(slide, deck, planned, theme, chrome);
+    if (planned.notes) slide.addNotes(planned.notes);
     return;
   }
-  slide.background = { color: theme.canvas };
+  const slide = deck.addSlide({ masterName: CONTENT_MASTER });
   if (chrome.motif) goldOrb(slide, deck, theme, chrome.w - 0.85, -0.55, 1.4);
-  addLogo(slide, theme, chrome.w - 0.95, chrome.h - 0.48);
-  if (options.synthesized) {
-    slide.addText("Contenu synthétisé pour le format diapositive.", {
-      x: 0.45,
-      y: chrome.h - 0.34,
-      w: chrome.w - 2.2,
-      h: 0.22,
-      margin: 0,
-      fontFace: theme.bodyFont,
-      fontSize: 9,
-      color: theme.muted,
-    });
-  }
+  addLogo(slide, theme, chrome.w - 2, chrome.h - 0.42);
+  const notes = [
+    planned.notes,
+    options.synthesized ? "Contenu synthétisé pour le format diapositive." : "",
+  ].filter(Boolean);
+  if (notes.length) slide.addNotes(notes.join("\n\n"));
   addTitle(slide, planned, theme, chrome);
   const section = planned.section;
   if (layout === "chart" && section.chart) addChartSlide(slide, deck, section, theme, chrome);
@@ -236,15 +269,18 @@ function addPlannedSlide(
 }
 
 function addTitle(slide: PptSlide, planned: PlannedSlide, theme: DesignDna, chrome: Chrome) {
-  const title = planned.continuation ? `${plainInline(planned.section.title)} (suite)` : plainInline(planned.section.title);
-  slide.addText(title, {
+  const raw = planned.continuation ? `${plainInline(planned.section.title)} (suite)` : plainInline(planned.section.title);
+  const box = { ...BOXES.title, w: chrome.w - 1.5, font: planned.section.level === 3 ? 22 : BOXES.title.font };
+  const title = fitTitle(raw, box);
+  slide.addText(title.text, {
     x: 0.45,
-    y: 0.28,
-    w: chrome.w - 1.5,
-    h: 0.62,
+    y: 0.22,
+    w: box.w,
+    h: box.h,
     margin: 0,
+    valign: "middle",
     fontFace: theme.headingFont,
-    fontSize: planned.section.level === 3 ? 22 : 26,
+    fontSize: title.font,
     bold: true,
     color: theme.primary,
   });
@@ -285,16 +321,16 @@ function addChartSlide(slide: PptSlide, deck: PptxGenJS, section: DocSection, th
   const chartX = hasCopy ? chrome.w * 0.46 : 0.45;
   const chartW = hasCopy ? chrome.w - chartX - 0.4 : chrome.w - 0.9;
   if (hasCopy) {
-    slide.addText(asBullets(linesOf(section).slice(0, 6), false), {
+    slide.addText(asBullets(linesOf(section), false), {
       x: 0.45,
       y: 1.05,
       w: chartX - 0.7,
       h: chrome.h - 1.7,
       margin: 0,
       fontFace: theme.bodyFont,
-      fontSize: 14,
+      fontSize: BOXES.chartSide.font,
       color: theme.primary,
-      paraSpaceAfter: 8,
+      paraSpaceAfter: BOXES.chartSide.after,
       valign: "top",
     });
   }
@@ -348,7 +384,7 @@ function addTableSlide(slide: PptSlide, section: DocSection, theme: DesignDna, c
     table.headers.map((_, index) => ({
       text: plainInline(row[index] ?? ""),
       options: {
-        fill: { color: theme.zebra && rowIndex % 2 === 1 ? theme.tableBodyFill : theme.inverse },
+        fill: { color: theme.zebra && rowIndex % 2 === 1 ? theme.tableBodyFill : SOFICAU_TABLE.bodyFill },
         color: theme.primary,
         align: "left" as const,
       },
@@ -361,14 +397,9 @@ function addTableSlide(slide: PptSlide, section: DocSection, theme: DesignDna, c
     w: width,
     h: chrome.h - 1.7,
     colW: table.headers.map(() => width / Math.max(1, table.headers.length)),
-    border: [
-      { pt: 0, color: theme.canvas },
-      { pt: 0, color: theme.canvas },
-      { pt: 0, color: theme.canvas },
-      { pt: 0, color: theme.canvas },
-    ],
+    border: { type: "solid", pt: 0.5, color: SOFICAU_TABLE.border },
     fontFace: theme.bodyFont,
-    fontSize: table.headers.length > 6 ? 11 : 13,
+    fontSize: table.headers.length > 6 ? BOXES.table.font - 1 : BOXES.table.font,
     valign: "middle",
   });
 }
@@ -599,7 +630,7 @@ function addImageSlide(slide: PptSlide, section: DocSection, theme: DesignDna, c
     w: chrome.w * 0.52,
     h: chrome.h - 1.8,
   });
-  slide.addText(asBullets(linesOf(section).slice(0, 6), false), {
+  slide.addText(asBullets(linesOf(section), false), {
     x: chrome.w * 0.56,
     y: 1.15,
     w: chrome.w * 0.4,
@@ -621,7 +652,7 @@ function addCopySlide(slide: PptSlide, section: DocSection, theme: DesignDna, ch
     ...body.map((text) => ({ text: plainInline(text), bullet: false, numbered: false })),
     ...bullets.map((text) => ({ text: plainInline(text), bullet: true, numbered: false })),
     ...numbered.map((text) => ({ text: plainInline(text), bullet: false, numbered: true })),
-  ].slice(0, 8);
+  ];
   slide.addText(
     blocks.map((item, index, all) => ({
       text: item.text,
@@ -637,9 +668,9 @@ function addCopySlide(slide: PptSlide, section: DocSection, theme: DesignDna, ch
       h: chrome.h - 1.75,
       margin: 0,
       fontFace: theme.bodyFont,
-      fontSize: blocks.length > 6 ? 15 : 16,
+      fontSize: BOXES.copy.font,
       color: theme.primary,
-      paraSpaceAfter: 10,
+      paraSpaceAfter: BOXES.copy.after,
       valign: "top",
     },
   );

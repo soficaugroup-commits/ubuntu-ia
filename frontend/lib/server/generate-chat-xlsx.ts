@@ -1,9 +1,11 @@
 import "server-only";
 import ExcelJS from "exceljs";
 import type { PreparedAttachment } from "@/lib/server/chat-attachments";
+import { SOFICAU_ENTITY, SOFICAU_PAGE, SOFICAU_PRODUCT, SOFICAU_TABLE } from "@/lib/server/brand/soficau-theme";
 import { argb, defaultDna, type DesignDna } from "@/lib/server/design-dna";
 import type { DocumentSpec } from "@/lib/server/document-spec";
 import { columnShouldSum, embedSheetCharts, type SheetChart } from "@/lib/server/xlsx-chart";
+import { columnWidth, parseCellValue, splitTotalRow, type CellValue } from "@/lib/server/xlsx-cells";
 import { plainInline } from "@/lib/server/rich-text";
 
 type SheetColors = {
@@ -12,6 +14,7 @@ type SheetColors = {
   canvas: string;
   white: string;
   mid: string;
+  zebra: string;
   font: string;
 };
 
@@ -26,10 +29,11 @@ export async function buildXlsx(
     canvas: argb(dna.canvas),
     white: argb(dna.inverse),
     mid: argb(dna.muted),
+    zebra: argb(dna.zebra ? dna.tableBodyFill : SOFICAU_TABLE.bodyFill),
     font: dna.bodyFont,
   };
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Ubuntu IA";
+  workbook.creator = SOFICAU_PRODUCT;
   workbook.created = new Date();
 
   const original = attachments.find(
@@ -202,7 +206,8 @@ function writeDashboard(workbook: ExcelJS.Workbook, spec: DocumentSpec, colors: 
     fill: colors.navy,
     align: "left",
   }, colors);
-  mergeFill(sheet, "B4:H4", spec.subtitle || "SOFICAU Ubuntu Group  ·  Ubuntu IA", {
+  applyPrintSetup(sheet, spec.title, 8);
+  mergeFill(sheet, "B4:H4", spec.subtitle || `${SOFICAU_ENTITY}  ·  ${SOFICAU_PRODUCT}`, {
     size: 11,
     color: colors.gold,
     fill: colors.navy,
@@ -269,15 +274,17 @@ function writeDataSheet(
     });
     return taken ? `${base} ${index + 1}`.slice(0, 40) : base;
   });
-  const tableRows = rows.map((line) =>
-    unique.map((_, colIndex) => {
-      const raw = plainInline(line[colIndex] ?? "");
-      return toNumber(raw) ?? raw;
-    }),
-  );
-  const summable = unique.map((header, index) =>
-    index === 0 ? false : columnShouldSum(header, rows.map((line) => toNumber(plainInline(line[index] ?? "")))),
-  );
+  const { data } = splitTotalRow(rows.map((line) => line.map((cell) => plainInline(cell ?? ""))));
+  const parsed = data.map((line) => unique.map((_, colIndex) => parseCellValue(line[colIndex] ?? "")));
+  const tableRows = parsed.map((line) => line.map((cell) => cell.value));
+  const percentCol = unique.map((_, index) => parsed.some((line) => line[index]?.kind === "percent"));
+  const totals: Array<"sum" | "average" | "none"> = unique.map((header, index) => {
+    if (index === 0) return "none";
+    const numbers = parsed.map((line) => (typeof line[index]?.value === "number" ? (line[index].value as number) : null));
+    if (percentCol[index]) return numbers.filter((value) => value !== null).length >= 2 ? "average" : "none";
+    return columnShouldSum(header, numbers) ? "sum" : "none";
+  });
+  const summable = totals.map((item) => item !== "none");
   const tableName = `Donnees${tableIndex}`;
   let tableOk = false;
   try {
@@ -286,72 +293,136 @@ function writeDataSheet(
       ref: "A3",
       headerRow: true,
       totalsRow: summable.some(Boolean),
-      style: { theme: "TableStyleMedium2", showRowStripes: true },
+      style: { theme: "TableStyleLight1", showRowStripes: false },
       columns: unique.map((name, index) => ({
         name,
         totalsRowLabel: index === 0 ? "Total" : undefined,
-        totalsRowFunction: summable[index] ? "sum" : "none",
+        totalsRowFunction: totals[index],
         filterButton: true,
       })),
       rows: tableRows,
     });
     tableOk = true;
-    if (rows.length && summable.some(Boolean) && unique.length > 1) {
+    brandTable(sheet, unique.length, parsed, summable.some(Boolean), colors);
+    summable.forEach((ok, index) => {
+      if (!ok || totals[index] !== "sum" || data.length < 2) return;
+      const letter = colLetter(index + 1);
       sheet.addConditionalFormatting({
-        ref: `B4:${colLetter(unique.length)}${3 + rows.length}`,
-        rules: [
-          {
-            type: "colorScale",
-            priority: 1,
-            cfvo: [{ type: "min" }, { type: "max" }],
-            color: [{ argb: colors.canvas }, { argb: colors.navy }],
-          },
-        ],
-      });
-    }
+        ref: `${letter}4:${letter}${3 + data.length}`,
+        rules: [{ type: "dataBar", priority: 1, cfvo: [{ type: "min" }, { type: "max" }], color: { argb: colors.gold } }],
+      } as unknown as ExcelJS.ConditionalFormattingOptions);
+    });
   } catch (error) {
     console.error("[chat] excel table", error);
-    const header = sheet.getRow(3);
-    unique.forEach((name, index) => {
-      const cell = header.getCell(index + 1);
-      cell.value = name;
-      styleCell(cell, { bold: true, size: 11, color: colors.white, fill: colors.navy, align: "center" }, colors);
-      sheet.getColumn(index + 1).width = index === 0 ? 28 : 16;
-    });
-    tableRows.forEach((line, rowIndex) => {
-      const excelRow = sheet.getRow(4 + rowIndex);
-      line.forEach((value, colIndex) => {
-        const cell = excelRow.getCell(colIndex + 1);
-        cell.value = value;
-        styleCell(cell, {
-          size: 11,
-          color: colors.navy,
-          fill: rowIndex % 2 === 0 ? colors.white : colors.canvas,
-          align: colIndex === 0 ? "left" : "center",
-        }, colors);
-      });
-    });
-    if (rows.length >= 2 && summable.some(Boolean)) {
-      const totalRow = 4 + rows.length;
-      sheet.getCell(totalRow, 1).value = "Total";
-      styleCell(sheet.getCell(totalRow, 1), { bold: true, size: 11, color: colors.white, fill: colors.gold }, colors);
-      summable.forEach((ok, index) => {
-        if (!ok) return;
-        const cell = sheet.getCell(totalRow, index + 1);
-        const letter = colLetter(index + 1);
-        cell.value = { formula: `SUM(${letter}4:${letter}${totalRow - 1})` };
-        styleCell(cell, { bold: true, size: 11, color: colors.white, fill: colors.gold, align: "center" }, colors);
-      });
-    }
+    writePlainTable(sheet, unique, parsed, totals, colors);
   }
-  unique.forEach((_, index) => {
-    sheet.getColumn(index + 1).width = index === 0 ? 28 : 16;
+  unique.forEach((name, index) => {
+    const values = [name, ...data.map((line) => line[index] ?? "")];
+    sheet.getColumn(index + 1).width = columnWidth(values, index === 0 ? 16 : 10, index === 0 ? 50 : 30);
   });
+  applyPrintSetup(sheet, title, unique.length, 3);
   const first = summable.findIndex(Boolean);
+  const fn = totals[first] === "average" ? "AVERAGE" : "SUM";
   return {
-    rows: rows.length,
+    rows: data.length,
     measureFormula:
-      tableOk && first >= 0 ? `SUM(${tableName}[${unique[first]}])` : undefined,
+      tableOk && first >= 0 ? `${fn}(${tableName}[${unique[first]}])` : undefined,
+  };
+}
+
+/** Styles SOFICAU explicites (le style de tableau Office reste neutre) : en-tête marine, zébrure claire, formats FR. */
+function brandTable(
+  sheet: ExcelJS.Worksheet,
+  columns: number,
+  parsed: CellValue[][],
+  hasTotals: boolean,
+  colors: SheetColors,
+) {
+  for (let col = 1; col <= columns; col += 1) {
+    styleCell(sheet.getCell(3, col), { bold: true, size: 11, color: colors.white, fill: colors.navy, align: "center" }, colors);
+  }
+  parsed.forEach((line, rowIndex) => {
+    line.forEach((value, colIndex) => {
+      const cell = sheet.getCell(4 + rowIndex, colIndex + 1);
+      styleCell(cell, {
+        size: 11,
+        color: colors.navy,
+        fill: rowIndex % 2 === 1 ? colors.zebra : colors.white,
+        align: value.kind === "text" ? "left" : "right",
+      }, colors);
+      if (value.numFmt) cell.numFmt = value.numFmt;
+    });
+  });
+  if (!hasTotals) return;
+  const totalRow = 4 + parsed.length;
+  for (let col = 1; col <= columns; col += 1) {
+    const cell = sheet.getCell(totalRow, col);
+    styleCell(cell, { bold: true, size: 11, color: colors.navy, fill: colors.canvas, align: col === 1 ? "left" : "right" }, colors);
+    cell.border = { ...cell.border, top: { style: "medium", color: { argb: colors.navy } } };
+    const sample = parsed.find((line) => line[col - 1]?.numFmt)?.[col - 1];
+    if (sample?.numFmt && sample.kind !== "date") cell.numFmt = sample.numFmt;
+  }
+}
+
+function writePlainTable(
+  sheet: ExcelJS.Worksheet,
+  headers: string[],
+  parsed: CellValue[][],
+  totals: Array<"sum" | "average" | "none">,
+  colors: SheetColors,
+) {
+  const header = sheet.getRow(3);
+  headers.forEach((name, index) => {
+    const cell = header.getCell(index + 1);
+    cell.value = name;
+    styleCell(cell, { bold: true, size: 11, color: colors.white, fill: colors.navy, align: "center" }, colors);
+  });
+  parsed.forEach((line, rowIndex) => {
+    line.forEach((value, colIndex) => {
+      const cell = sheet.getCell(4 + rowIndex, colIndex + 1);
+      cell.value = value.value;
+      if (value.numFmt) cell.numFmt = value.numFmt;
+      styleCell(cell, {
+        size: 11,
+        color: colors.navy,
+        fill: rowIndex % 2 === 1 ? colors.zebra : colors.white,
+        align: value.kind === "text" ? "left" : "right",
+      }, colors);
+    });
+  });
+  if (parsed.length < 2 || !totals.some((item) => item !== "none")) return;
+  const totalRow = 4 + parsed.length;
+  sheet.getCell(totalRow, 1).value = "Total";
+  styleCell(sheet.getCell(totalRow, 1), { bold: true, size: 11, color: colors.navy, fill: colors.canvas }, colors);
+  totals.forEach((fn, index) => {
+    if (fn === "none") return;
+    const cell = sheet.getCell(totalRow, index + 1);
+    const letter = colLetter(index + 1);
+    cell.value = { formula: `${fn === "average" ? "AVERAGE" : "SUM"}(${letter}4:${letter}${totalRow - 1})` };
+    const sample = parsed.find((line) => line[index]?.numFmt)?.[index];
+    if (sample?.numFmt) cell.numFmt = sample.numFmt;
+    styleCell(cell, { bold: true, size: 11, color: colors.navy, fill: colors.canvas, align: "right" }, colors);
+  });
+}
+
+/** Impression A4 : orientation selon la largeur, ajustement à une page en largeur, en-tête de tableau répété. */
+function applyPrintSetup(sheet: ExcelJS.Worksheet, title: string, columns: number, headerRow?: number) {
+  const margin = SOFICAU_PAGE.marginMm / 25.4;
+  sheet.pageSetup = {
+    ...sheet.pageSetup,
+    paperSize: 9,
+    orientation: columns > 6 ? "landscape" : "portrait",
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    horizontalCentered: true,
+    margins: { left: margin, right: margin, top: margin, bottom: margin, header: 0.3, footer: 0.3 },
+    ...(headerRow ? { printTitlesRow: `${headerRow}:${headerRow}` } : {}),
+  };
+  const safeTitle = title.replace(/&/g, "&&").slice(0, 60);
+  sheet.headerFooter = {
+    oddHeader: `&L&8${safeTitle}&R&8${SOFICAU_ENTITY}`,
+    oddFooter: "&R&8Page &P sur &N",
   };
 }
 
@@ -391,7 +462,7 @@ function styleCell(
     size: number;
     color: string;
     fill?: string;
-    align?: "left" | "center";
+    align?: "left" | "center" | "right";
   },
   colors: SheetColors,
 ) {
@@ -424,8 +495,3 @@ function colLetter(col: number): string {
   return text;
 }
 
-function toNumber(value: string): number | null {
-  const text = value.replace(/\s/g, "").replace("%", "").replace(",", ".");
-  if (!/^-?\d+(\.\d+)?$/.test(text)) return null;
-  return Number(text);
-}

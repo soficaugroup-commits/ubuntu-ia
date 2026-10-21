@@ -357,6 +357,15 @@ export async function* streamAnswerQuestion(
             ),
           );
         }
+        if (phase === "invalid" && format) {
+          queue.push(
+            step(
+              `file-invalid-${format}`,
+              interpolate(steps.stepsFileInvalid, { format: formatLabel(format) }),
+              "error",
+            ),
+          );
+        }
       },
     }).catch((error) => {
       console.error("[chat] files", error);

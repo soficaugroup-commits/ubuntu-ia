@@ -1,0 +1,14 @@
+---
+description: Feuille de route agent autonome Ubuntu IA (lots A à E) — à suivre pour toute implémentation de ces chantiers
+alwaysApply: true
+---
+
+Le programme de travail en cours est décrit dans `docs/feuille-de-route/` :
+`00-PILOTAGE.md` (règles d'exécution, à lire en premier), puis `A-…` à `E-…` (un fichier par lot), et `JOURNAL.md`.
+
+- Exécuter les lots dans l'ordre A → E, un sous-lot = un commit, vérifications (lint, tsc, build, tests) à chaque sous-lot.
+- Tenir `docs/feuille-de-route/JOURNAL.md` à jour (plan avant de coder, bilan après).
+- Nouvelles migrations à partir de `backend/db/015_…`, RLS dans la même migration, jamais de modification d'une migration existante.
+- Toute action vers un système externe : proposer → valider → exécuter → tracer.
+- Ne pas pousser ni déployer sans accord explicite de l'utilisateur.
+- Sur le périmètre, cette feuille de route remplace la restriction « hors MVP » de `cursorrules` ; toutes ses autres règles restent valables.

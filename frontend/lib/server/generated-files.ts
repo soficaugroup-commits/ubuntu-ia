@@ -1,12 +1,13 @@
 import "server-only";
+import { officeWorkerEnabled } from "@/lib/server/office-validate";
 import { supabaseAdmin } from "@/lib/server/supabase-admin";
 
 export const GENERATED_BUCKET = "generated-files";
 
-const OFFICE_KIND: Record<string, string> = {
-  docx: "validate_ooxml",
-  pptx: "validate_ooxml",
-  xlsx: "xlsx_recalc",
+const OFFICE_KINDS: Record<string, string[]> = {
+  docx: ["validate_ooxml"],
+  pptx: ["validate_ooxml"],
+  xlsx: ["validate_ooxml", "xlsx_recalc"],
 };
 
 export async function storeGeneratedFile(input: {
@@ -26,18 +27,22 @@ export async function storeGeneratedFile(input: {
     });
     if (error) return null;
     const signed = await client.storage.from(GENERATED_BUCKET).createSignedUrl(path, 60 * 60 * 24 * 7);
-    const kind = OFFICE_KIND[input.format];
-    if (kind) {
-      await client.from("office_jobs").insert({
-        user_id: input.userId,
-        kind,
-        input_path: path,
-        status: "queued",
-        payload: { source: "chat", format: input.format },
-      });
+    const kinds = officeWorkerEnabled() ? OFFICE_KINDS[input.format] ?? [] : [];
+    if (kinds.length) {
+      const { error: jobError } = await client.from("office_jobs").insert(
+        kinds.map((kind) => ({
+          user_id: input.userId,
+          kind,
+          input_path: path,
+          status: "queued",
+          payload: { source: "chat", format: input.format },
+        })),
+      );
+      if (jobError) console.error("[generated-files] office_jobs", jobError.message);
     }
     return signed.data?.signedUrl ?? null;
-  } catch {
+  } catch (error) {
+    console.error("[generated-files] stockage", error);
     return null;
   }
 }

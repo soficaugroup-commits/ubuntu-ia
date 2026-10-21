@@ -11,6 +11,7 @@ import {
   LevelFormat,
   LineRuleType,
   Packer,
+  PageBreak,
   PageNumber,
   Paragraph,
   ShadingType,
@@ -18,57 +19,153 @@ import {
   TableCell,
   TableOfContents,
   TableRow,
+  TabStopType,
   TextRun,
   WidthType,
 } from "docx";
+import {
+  documentMarks,
+  formatDateFr,
+  tocHeadingCount,
+  TOC_MIN_HEADINGS,
+  type DocumentMarks,
+} from "@/lib/server/brand/document-marks";
+import {
+  SOFICAU_COLORS,
+  SOFICAU_PAGE,
+  SOFICAU_PRODUCT,
+  SOFICAU_TABLE,
+  SOFICAU_TYPE,
+  units,
+} from "@/lib/server/brand/soficau-theme";
 import { renderChartPng } from "@/lib/server/chart-png";
 import { defaultDna, fitLogo, wordFont, type DesignDna } from "@/lib/server/design-dna";
-import { BRAND, type DocumentSpec } from "@/lib/server/document-spec";
-import { isLong } from "@/lib/server/document-process";
+import type { DocChart, DocumentSpec } from "@/lib/server/document-spec";
 import { parseInline, plainInline } from "@/lib/server/rich-text";
 
-const CONTENT_WIDTH = 9638;
-const BODY_SPACING = { after: 160, line: 276, lineRule: LineRuleType.AUTO };
+const MARGIN = units.mmToTwip(SOFICAU_PAGE.marginMm);
+const CONTENT_WIDTH = units.mmToTwip(SOFICAU_PAGE.widthMm) - 2 * MARGIN;
+const BODY_SIZE = units.ptToHalfPt(SOFICAU_TYPE.body);
+const SMALL_SIZE = units.ptToHalfPt(SOFICAU_TYPE.small);
+const TABLE_SIZE = units.ptToHalfPt(SOFICAU_TYPE.table);
+const BODY_SPACING = {
+  after: units.ptToTwip(SOFICAU_TYPE.paragraphAfter),
+  line: Math.round(240 * SOFICAU_TYPE.lineHeight),
+  lineRule: LineRuleType.AUTO,
+};
+const CHART_W = 720;
+const CHART_H = 380;
+const CHART_DISPLAY_W = 560;
+
+type Fonts = { heading: string; body: string };
+type Counters = { table: number; figure: number };
 
 export async function buildDocx(spec: DocumentSpec, dna: DesignDna = defaultDna()): Promise<Uint8Array> {
-  const font = wordFont(dna.headingFont);
-  const content: (Paragraph | Table)[] = [];
+  const fonts: Fonts = { heading: wordFont(dna.headingFont), body: wordFont(dna.bodyFont) };
+  const marks = documentMarks(spec, dna);
+  const withToc = tocHeadingCount(spec) >= TOC_MIN_HEADINGS;
+  const content = [...(withToc ? tocBlock(dna, fonts) : []), ...bodyBlocks(spec, dna, fonts)];
 
-  const bodyFont = wordFont(dna.bodyFont);
-  if (isLong(spec)) {
-    content.push(
-      new Paragraph({
-        heading: HeadingLevel.HEADING_1,
-        spacing: { before: 280, after: 140 },
-        children: [new TextRun({ text: "Plan", color: dna.primary, font })],
-      }),
-    );
-    for (const section of spec.sections) {
-      content.push(
-        new Paragraph({
-          numbering: { reference: "ubuntu-numbers", level: 0 },
-          spacing: BODY_SPACING,
-          children: [new TextRun({ text: section.title, color: dna.text, size: 22, font: bodyFont })],
+  const document = new Document({
+    creator: SOFICAU_PRODUCT,
+    title: plainInline(spec.title),
+    description: `Document généré par ${SOFICAU_PRODUCT}.`,
+    features: withToc ? { updateFields: true } : undefined,
+    styles: documentStyles(dna, fonts),
+    numbering: numberingConfig(),
+    sections: [
+      ...(spec.design?.couverture === false
+        ? []
+        : [
+            {
+              properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+              children: [coverTable(spec, dna, marks)],
+            },
+          ]),
+      {
+        properties: { page: { margin: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN } } },
+        headers: { default: pageHeader(spec, dna, fonts, marks) },
+        footers: { default: pageFooter(dna, fonts) },
+        children: content.length ? content : [new Paragraph({ text: plainInline(spec.title) })],
+      },
+    ],
+  });
+  return Packer.toBuffer(document);
+}
+
+function documentStyles(dna: DesignDna, fonts: Fonts) {
+  const heading = (size: number, before: number, color: string) => ({
+    run: { font: fonts.heading, size: units.ptToHalfPt(size), bold: true, color },
+    paragraph: { spacing: { before, after: 120 }, keepNext: true, keepLines: true },
+  });
+  return {
+    default: {
+      document: { run: { font: fonts.body, size: BODY_SIZE, color: dna.text } },
+      heading1: heading(SOFICAU_TYPE.h1, 360, dna.primary),
+      heading2: heading(SOFICAU_TYPE.h2, 240, dna.primary),
+      heading3: heading(SOFICAU_TYPE.h3, 200, dna.muted),
+    },
+    paragraphStyles: [
+      {
+        id: "Caption",
+        name: "caption",
+        basedOn: "Normal",
+        next: "Normal",
+        quickFormat: true,
+        run: { font: fonts.body, size: SMALL_SIZE, italics: true, color: dna.muted },
+        paragraph: { spacing: { before: 60, after: 160 } },
+      },
+    ],
+  };
+}
+
+function numberingConfig() {
+  const level = (index: number, format: (typeof LevelFormat)[keyof typeof LevelFormat], text: string) => ({
+    level: index,
+    format,
+    text,
+    alignment: AlignmentType.LEFT,
+    style: { paragraph: { indent: { left: 720 + index * 360, hanging: 360 } } },
+  });
+  return {
+    config: [
+      {
+        reference: "ubuntu-bullets",
+        levels: [level(0, LevelFormat.BULLET, "\u2022"), level(1, LevelFormat.BULLET, "\u2013")],
+      },
+      { reference: "ubuntu-numbers", levels: [level(0, LevelFormat.DECIMAL, "%1.")] },
+    ],
+  };
+}
+
+function tocBlock(dna: DesignDna, fonts: Fonts): (Paragraph | TableOfContents)[] {
+  return [
+    new Paragraph({
+      spacing: { after: 200 },
+      children: [
+        new TextRun({
+          text: "Sommaire",
+          bold: true,
+          size: units.ptToHalfPt(SOFICAU_TYPE.h1),
+          color: dna.primary,
+          font: fonts.heading,
         }),
-      );
-    }
-  }
-  if (spec.sections.length >= 3) {
-    content.push(
-      new Paragraph({
-        heading: HeadingLevel.HEADING_1,
-        spacing: { before: 280, after: 140 },
-        children: [new TextRun({ text: "Sommaire", color: dna.primary, font })],
-      }),
-      new TableOfContents("Sommaire", { hyperlink: true, headingStyleRange: "1-3" }),
-    );
-  }
+      ],
+    }),
+    new TableOfContents("Sommaire", { hyperlink: true, headingStyleRange: "1-2" }),
+    new Paragraph({ children: [new PageBreak()] }),
+  ];
+}
+
+function bodyBlocks(spec: DocumentSpec, dna: DesignDna, fonts: Fonts): (Paragraph | Table)[] {
+  const content: (Paragraph | Table)[] = [];
+  const counters: Counters = { table: 0, figure: 0 };
+  const run = { size: BODY_SIZE, color: dna.text, font: fonts.body };
   for (const section of spec.sections) {
     content.push(
       new Paragraph({
         heading: headingFor(section.level),
-        spacing: { before: section.level === 3 ? 180 : 280, after: 140, line: 276, lineRule: LineRuleType.AUTO },
-        children: [new TextRun({ text: section.title, color: dna.primary, font })],
+        children: [new TextRun({ text: plainInline(section.title) })],
       }),
     );
     if (section.quote) {
@@ -76,19 +173,17 @@ export async function buildDocx(spec: DocumentSpec, dna: DesignDna = defaultDna(
         new Paragraph({
           spacing: { before: 120, after: 160 },
           border: { left: { style: BorderStyle.SINGLE, size: 18, color: dna.accent, space: 8 } },
-          children: richRuns(section.quote, { size: 24, color: dna.primary, italics: true, font: bodyFont }),
+          children: richRuns(section.quote, { ...run, size: units.ptToHalfPt(12), color: dna.primary, italics: true }),
         }),
       );
     }
-    for (const paragraph of section.body) {
-      content.push(...wordLines(paragraph, { size: 22, color: dna.text, font: bodyFont }));
-    }
+    for (const paragraph of section.body) content.push(...wordLines(paragraph, run));
     section.bullets.forEach((item, index) => {
       content.push(
         new Paragraph({
           numbering: { reference: "ubuntu-bullets", level: section.bulletDepth?.[index] ? 1 : 0 },
           spacing: { after: 80 },
-          children: richRuns(item, { size: 22, color: dna.text, font: bodyFont }),
+          children: richRuns(item, run),
         }),
       );
     });
@@ -97,155 +192,119 @@ export async function buildDocx(spec: DocumentSpec, dna: DesignDna = defaultDna(
         new Paragraph({
           numbering: { reference: "ubuntu-numbers", level: 0 },
           spacing: { after: 80 },
-          children: richRuns(item, { size: 22, color: dna.text, font: bodyFont }),
+          children: richRuns(item, run),
         }),
       );
     });
     if (section.table) {
-      content.push(wordTable(section.table.headers, section.table.rows, dna));
-      content.push(new Paragraph({ text: "" }));
+      counters.table += 1;
+      content.push(caption(`Tableau ${counters.table} — ${plainInline(section.title)}`, true));
+      content.push(wordTable(section.table.headers, section.table.rows, dna, fonts));
+      content.push(new Paragraph({ spacing: { after: 120 }, children: [] }));
     }
     if (section.chart) {
-      content.push(
-        new Paragraph({
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 200, after: 120 },
-          children: richRuns(section.chart.title, { size: 26, color: dna.accent, bold: true, font }),
-        }),
-      );
-      const png = renderChartPng(section.chart, dna.chartColors);
-      content.push(
-        new Paragraph({
-          spacing: { after: 160 },
-          children: [
-            new ImageRun({
-              type: "png",
-              data: png,
-              transformation: { width: 520, height: 274 },
-            }),
-          ],
-        }),
-      );
-      const headers = ["Catégorie", ...section.chart.series.map((item) => item.name)];
-      const rows = section.chart.categories.map((category, index) => [
-        category,
-        ...section.chart!.series.map((item) => String(item.values[index] ?? "")),
-      ]);
-      content.push(wordTable(headers, rows, dna));
-      content.push(new Paragraph({ text: "" }));
+      counters.figure += 1;
+      content.push(...chartBlock(section.chart, dna, fonts, counters, !section.table));
     }
   }
-
-  const document = new Document({
-    creator: "Ubuntu IA",
-    title: spec.title,
-    description: "Document généré par Ubuntu IA selon le skill docx.",
-    numbering: {
-      config: [
-        {
-          reference: "ubuntu-bullets",
-          levels: [
-            {
-              level: 0,
-              format: LevelFormat.BULLET,
-              text: "\u2022",
-              alignment: AlignmentType.LEFT,
-              style: { paragraph: { indent: { left: 720, hanging: 360 } } },
-            },
-            {
-              level: 1,
-              format: LevelFormat.BULLET,
-              text: "\u2013",
-              alignment: AlignmentType.LEFT,
-              style: { paragraph: { indent: { left: 1080, hanging: 360 } } },
-            },
-          ],
-        },
-        {
-          reference: "ubuntu-numbers",
-          levels: [
-            {
-              level: 0,
-              format: LevelFormat.DECIMAL,
-              text: "%1.",
-              alignment: AlignmentType.LEFT,
-              style: { paragraph: { indent: { left: 720, hanging: 360 } } },
-            },
-          ],
-        },
-      ],
-    },
-    sections: [
-      ...(spec.design?.couverture === false
-        ? []
-        : [
-            {
-              properties: {
-                page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } },
-              },
-              children: [coverTable(spec, dna)],
-            },
-          ]),
-      {
-        properties: {
-          page: { margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 } },
-        },
-        headers: {
-          default: new Header({
-            children: [
-              new Paragraph({
-                border: {
-                  bottom: { style: BorderStyle.SINGLE, size: 12, color: dna.accent, space: 6 },
-                },
-                spacing: { after: 200 },
-                children: headerRuns(spec, dna, font),
-              }),
-            ],
-          }),
-        },
-        footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.RIGHT,
-                border: {
-                  top: { style: BorderStyle.SINGLE, size: 8, color: dna.accent, space: 6 },
-                },
-                children: [
-                  new TextRun({ children: [PageNumber.CURRENT], color: dna.primary, size: 18 }),
-                ],
-              }),
-            ],
-          }),
-        },
-        children: content.length
-          ? content
-          : [new Paragraph({ alignment: AlignmentType.LEFT, text: spec.title })],
-      },
-    ],
-  });
-  return Packer.toBuffer(document);
+  return content;
 }
 
-function coverTable(spec: DocumentSpec, dna: DesignDna): Table {
+function chartBlock(
+  chart: DocChart,
+  dna: DesignDna,
+  fonts: Fonts,
+  counters: Counters,
+  withData: boolean,
+): (Paragraph | Table)[] {
+  const png = renderChartPng(chart, dna.chartColors, CHART_W, CHART_H, 2);
+  const blocks: (Paragraph | Table)[] = [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      keepNext: true,
+      spacing: { before: 160, after: 60 },
+      children: [
+        new ImageRun({
+          type: "png",
+          data: png,
+          transformation: { width: CHART_DISPLAY_W, height: Math.round((CHART_DISPLAY_W * CHART_H) / CHART_W) },
+        }),
+      ],
+    }),
+    caption(`Figure ${counters.figure} — ${plainInline(chart.title)}`, false),
+  ];
+  if (withData) {
+    counters.table += 1;
+    const headers = ["Catégorie", ...chart.series.map((item) => item.name)];
+    const rows = chart.categories.map((category, index) => [
+      category,
+      ...chart.series.map((item) => String(item.values[index] ?? "")),
+    ]);
+    blocks.push(caption(`Tableau ${counters.table} — Données : ${plainInline(chart.title)}`, true));
+    blocks.push(wordTable(headers, rows, dna, fonts));
+    blocks.push(new Paragraph({ spacing: { after: 120 }, children: [] }));
+  }
+  return blocks;
+}
+
+function caption(text: string, keepNext: boolean): Paragraph {
+  return new Paragraph({ style: "Caption", keepNext, children: [new TextRun({ text })] });
+}
+
+function pageHeader(spec: DocumentSpec, dna: DesignDna, fonts: Fonts, marks: DocumentMarks): Header {
+  const title = plainInline(spec.title).slice(0, 70);
+  return new Header({
+    children: [
+      new Paragraph({
+        border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: dna.accent, space: 4 } },
+        tabStops: [{ type: TabStopType.RIGHT, position: CONTENT_WIDTH }],
+        children: [
+          new TextRun({ text: title, bold: true, color: dna.primary, size: SMALL_SIZE, font: fonts.heading }),
+          ...(marks.signature
+            ? [new TextRun({ text: `\t${marks.signature}`, color: dna.accent, size: SMALL_SIZE, font: fonts.body })]
+            : []),
+        ],
+      }),
+    ],
+  });
+}
+
+function pageFooter(dna: DesignDna, fonts: Fonts): Footer {
+  const style = { color: dna.muted, size: SMALL_SIZE, font: fonts.body };
+  return new Footer({
+    children: [
+      new Paragraph({
+        alignment: AlignmentType.RIGHT,
+        border: { top: { style: BorderStyle.SINGLE, size: 4, color: SOFICAU_TABLE.border, space: 4 } },
+        children: [
+          new TextRun({ ...style, children: ["Page ", PageNumber.CURRENT, " sur ", PageNumber.TOTAL_PAGES] }),
+        ],
+      }),
+    ],
+  });
+}
+
+function coverTable(spec: DocumentSpec, dna: DesignDna, marks: DocumentMarks): Table {
   const logo = dna.logo;
   const logoSize = logo ? fitLogo(logo, 160, 64) : undefined;
+  const width = units.mmToTwip(SOFICAU_PAGE.widthMm) - 2 * 720;
+  const meta = [marks.signature, formatDateFr()].filter(Boolean).join("  ·  ");
   return new Table({
-    width: { size: CONTENT_WIDTH, type: WidthType.DXA },
-    columnWidths: [CONTENT_WIDTH],
+    width: { size: width, type: WidthType.DXA },
+    columnWidths: [width],
     rows: [
       new TableRow({
-        height: { value: 12000, rule: HeightRule.ATLEAST },
+        height: { value: 14800, rule: HeightRule.ATLEAST },
         children: [
           new TableCell({
-            width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+            width: { size: width, type: WidthType.DXA },
             shading: { type: ShadingType.CLEAR, fill: dna.primary },
             margins: { top: 1600, bottom: 800, left: 600, right: 600 },
             children: [
               ...(logo && logoSize
                 ? [
                     new Paragraph({
-                      spacing: { after: 200 },
+                      spacing: { after: 400 },
                       children: [
                         new ImageRun({
                           type: logo.mime === "image/png" ? "png" : "jpg",
@@ -256,27 +315,26 @@ function coverTable(spec: DocumentSpec, dna: DesignDna): Table {
                     }),
                   ]
                 : []),
-              ...(marks(spec, dna).eyebrow
+              ...(marks.eyebrow
                 ? [
                     new Paragraph({
                       spacing: { after: 200 },
-                      children: [
-                        new TextRun({ text: marks(spec, dna).eyebrow, bold: true, color: dna.accent, size: 22 }),
-                      ],
+                      children: [new TextRun({ text: marks.eyebrow, bold: true, color: dna.accent, size: 22 })],
                     }),
                   ]
                 : []),
-              ...wordLines(spec.title, { size: 56, color: "FFFFFF", bold: true }),
-              ...wordLines(spec.subtitle || marks(spec, dna).signature || "Ubuntu IA", { size: 24, color: dna.accent }),
+              ...wordLines(spec.title, { size: units.ptToHalfPt(SOFICAU_TYPE.title), color: dna.inverse, bold: true }),
+              ...(spec.subtitle ? wordLines(spec.subtitle, { size: 24, color: dna.accent }) : []),
               new Paragraph({
-                spacing: { before: 800 },
+                spacing: { before: 1200 },
+                children: [new TextRun({ text: meta, color: SOFICAU_COLORS.onNavyMuted, size: 22 })],
+              }),
+              new Paragraph({
                 children: [
                   new TextRun({
-                    text: marks(spec, dna).signature
-                      ? `Document généré par Ubuntu IA pour ${marks(spec, dna).signature}`
-                      : "Document généré par Ubuntu IA",
-                    color: "DCE6EC",
-                    size: 20,
+                    text: `Document généré par ${SOFICAU_PRODUCT}`,
+                    color: SOFICAU_COLORS.onNavyMuted,
+                    size: SMALL_SIZE,
                   }),
                 ],
               }),
@@ -288,22 +346,26 @@ function coverTable(spec: DocumentSpec, dna: DesignDna): Table {
   });
 }
 
-function wordTable(headers: string[], rows: string[][], dna: DesignDna): Table {
+function wordTable(headers: string[], rows: string[][], dna: DesignDna, fonts: Fonts): Table {
   const columns = Math.max(1, headers.length);
   const colWidth = Math.floor(CONTENT_WIDTH / columns);
-  const columnWidths = Array.from({ length: columns }, () => colWidth);
+  const line = { style: BorderStyle.SINGLE, size: SOFICAU_TABLE.borderSize, color: SOFICAU_TABLE.border };
   return new Table({
-    width: { size: CONTENT_WIDTH, type: WidthType.DXA },
-    columnWidths,
+    width: { size: colWidth * columns, type: WidthType.DXA },
+    columnWidths: Array.from({ length: columns }, () => colWidth),
+    borders: { top: line, bottom: line, left: line, right: line, insideHorizontal: line, insideVertical: line },
     rows: [
       new TableRow({
-        children: headers.map((cell) => wordCell(cell, colWidth, true, dna)),
+        tableHeader: true,
+        cantSplit: true,
+        children: headers.map((cell) => wordCell(cell, colWidth, true, dna, fonts)),
       }),
       ...rows.map(
         (row, rowIndex) =>
           new TableRow({
+            cantSplit: true,
             children: Array.from({ length: columns }, (_, index) =>
-              wordCell(row[index] ?? "", colWidth, false, dna, rowIndex),
+              wordCell(row[index] ?? "", colWidth, false, dna, fonts, rowIndex),
             ),
           }),
       ),
@@ -311,36 +373,43 @@ function wordTable(headers: string[], rows: string[][], dna: DesignDna): Table {
   });
 }
 
-function marks(spec: DocumentSpec, dna: DesignDna): { eyebrow: string; signature: string } {
-  const brand =
-    dna.primary.toUpperCase() === BRAND.navy &&
-    dna.accent.toUpperCase() === BRAND.gold &&
-    !dna.headerLabel &&
-    !dna.sourceName;
-  return {
-    eyebrow: spec.design?.marque?.trim() || dna.headerLabel?.trim() || (brand ? "UBUNTU IA" : ""),
-    signature: spec.design?.signature?.trim() || (brand ? "SOFICAU Ubuntu Group" : dna.sourceName || ""),
-  };
+function wordCell(
+  text: string,
+  width: number,
+  header: boolean,
+  dna: DesignDna,
+  fonts: Fonts,
+  rowIndex = 0,
+): TableCell {
+  const fill = header
+    ? dna.tableHeaderFill
+    : dna.zebra && rowIndex % 2 === 1
+      ? dna.tableBodyFill
+      : SOFICAU_TABLE.bodyFill;
+  const value = plainInline(text);
+  return new TableCell({
+    width: { size: width, type: WidthType.DXA },
+    shading: { type: ShadingType.CLEAR, fill },
+    margins: { top: 60, bottom: 60, left: 100, right: 100 },
+    children: [
+      new Paragraph({
+        alignment: !header && isNumeric(value) ? AlignmentType.RIGHT : AlignmentType.LEFT,
+        children: [
+          new TextRun({
+            text: value || " ",
+            bold: header,
+            color: header ? dna.inverse : dna.text,
+            size: TABLE_SIZE,
+            font: fonts.body,
+          }),
+        ],
+      }),
+    ],
+  });
 }
 
-function headerRuns(spec: DocumentSpec, dna: DesignDna, font: string): TextRun[] {
-  const label = marks(spec, dna);
-  const runs: TextRun[] = [];
-  if (label.eyebrow) {
-    runs.push(new TextRun({ text: label.eyebrow.slice(0, 40), bold: true, color: dna.primary, size: 20, font }));
-  }
-  if (label.signature) {
-    runs.push(
-      new TextRun({
-        text: `${label.eyebrow ? "  ·  " : ""}${label.signature}`,
-        color: dna.accent,
-        size: 20,
-        font,
-      }),
-    );
-  }
-  if (!runs.length) runs.push(new TextRun({ text: "Ubuntu IA", bold: true, color: dna.primary, size: 20, font }));
-  return runs;
+function isNumeric(value: string): boolean {
+  return /^[-+]?[\d\s\u00a0\u202f.,]+\s?(%|€|FCFA|XOF|XAF|\$)?$/i.test(value.trim()) && /\d/.test(value);
 }
 
 function headingFor(level: 1 | 2 | 3 | undefined): (typeof HeadingLevel)[keyof typeof HeadingLevel] {
@@ -374,35 +443,5 @@ function wordLines(
 ): Paragraph[] {
   const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
   const source = lines.length ? lines : [text];
-  return source.map(
-    (line) =>
-        new Paragraph({
-          spacing: BODY_SPACING,
-          children: richRuns(line, run),
-        }),
-  );
-}
-
-function wordCell(text: string, width: number, header: boolean, dna: DesignDna, rowIndex = 0): TableCell {
-  const bodyFill = dna.zebra && rowIndex % 2 === 1 ? dna.tableBodyFill : dna.canvas;
-  return new TableCell({
-    width: { size: width, type: WidthType.DXA },
-    shading: {
-      type: ShadingType.CLEAR,
-      fill: header ? dna.tableHeaderFill : bodyFill,
-    },
-    margins: { top: 60, bottom: 60, left: 80, right: 80 },
-    children: [
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: plainInline(text) || " ",
-            bold: header,
-            color: header ? dna.inverse : dna.text,
-            size: 20,
-          }),
-        ],
-      }),
-    ],
-  });
+  return source.map((line) => new Paragraph({ spacing: BODY_SPACING, children: richRuns(line, run) }));
 }

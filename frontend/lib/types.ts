@@ -199,6 +199,8 @@ export type Conversation = {
   messages: ChatMessage[];
 };
 
+export type MemoryScope = "preference" | "profil" | "projet" | "organisation" | "contexte";
+
 export type MemoryFact = {
   id: string;
   cle: string;
@@ -206,6 +208,12 @@ export type MemoryFact = {
   sourceConversationId?: string | null;
   dateCreation: string;
   dateMaj: string;
+  /** Rubrique du souvenir (migration 019). Déduite de la clé pour les anciens faits. */
+  portee?: MemoryScope;
+  /** Projet, client ou entité concerné : un projet n'est rappelé que si la demande le concerne. */
+  sujet?: string | null;
+  importance?: number;
+  derniereUtilisation?: string | null;
 };
 
 export type FeedbackType = "positif" | "negatif";

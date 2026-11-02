@@ -9,7 +9,7 @@ import {
   postChatCompletion,
   WEB_TOOLS,
 } from "@/lib/server/deep-research";
-import { supabaseAdmin } from "@/lib/server/supabase-admin";
+import { matchIndexedChunks } from "@/lib/server/indexed-search";
 
 const MATCH_COUNT = 6;
 const MATCH_THRESHOLD = 0.4;
@@ -86,16 +86,7 @@ async function thinkDeeper(query: string): Promise<string> {
 }
 
 async function retrieveChunks(query: string): Promise<IndexedChunk[]> {
+  // Exclut la catégorie Méthodologie : jamais citée comme source.
   const [vector] = await embedTexts([query]);
-  const { data, error } = await supabaseAdmin().rpc("match_document_chunks", {
-    query_embedding: vector,
-    match_count: MATCH_COUNT,
-    match_threshold: MATCH_THRESHOLD,
-  });
-  if (error) {
-    throw new Error("La recherche dans les documents indexés a échoué.");
-  }
-  return ((data ?? []) as IndexedChunk[]).filter(
-    (row) => row.contenu?.trim() && (row.similarite ?? 0) >= MATCH_THRESHOLD,
-  );
+  return matchIndexedChunks(vector, { count: MATCH_COUNT, threshold: MATCH_THRESHOLD });
 }

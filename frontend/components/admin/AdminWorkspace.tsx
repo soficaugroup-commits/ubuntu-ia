@@ -21,6 +21,7 @@ import {
 import { INDEXABLE_ACCEPT } from "@/lib/upload-files";
 import { formatDateTime, interpolate } from "@/lib/format";
 import type { DocumentCategory, KnowledgeDocument } from "@/lib/types";
+import { isMethodologyCategory } from "@/lib/methodology-category";
 
 type Toast = { tone: "info" | "danger"; text: string };
 
@@ -345,7 +346,11 @@ export function AdminWorkspace() {
             id="categorie"
             className="w-full max-w-sm"
             label={copy.admin.categoryIndexLabel}
-            hint={copy.admin.categoryIndexHint}
+            hint={
+              isMethodologyCategory(category)
+                ? copy.admin.categoryMethodologyHint
+                : copy.admin.categoryIndexHint
+            }
             value={category}
             onChange={(next) => setCategory(next)}
           >

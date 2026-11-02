@@ -9,7 +9,7 @@ import {
   messageText,
   postChatCompletion,
 } from "@/lib/server/deep-research";
-import { supabaseAdmin } from "@/lib/server/supabase-admin";
+import { matchIndexedChunks } from "@/lib/server/indexed-search";
 import type { FileFormat } from "@/lib/types";
 import type { AgentMode } from "@/lib/server/agent-plan";
 import { loadDocumentSkillPrompt } from "@/lib/server/document-skills";
@@ -336,31 +336,23 @@ export async function searchIndexedChunks(query: string): Promise<RetrievedChunk
 }
 
 async function retrieveChunks(query: string): Promise<RetrievedChunk[]> {
+  // Exclut la catégorie Méthodologie : jamais citée comme source.
   const [vector] = await embedTexts([query]);
-  const { data, error } = await supabaseAdmin().rpc("match_document_chunks", {
-    query_embedding: vector,
-    match_count: MATCH_COUNT,
-    match_threshold: MATCH_THRESHOLD,
-  });
-  if (error) {
+  const rows = await matchIndexedChunks(vector, {
+    count: MATCH_COUNT,
+    threshold: MATCH_THRESHOLD,
+  }).catch((error) => {
     console.error("[agent] rag", error);
     return [];
-  }
-  return ((data ?? []) as Array<Partial<RetrievedChunk> & {
-    document_id: string;
-    contenu: string;
-    titre: string;
-    similarite: number;
-  }>)
-    .filter((row) => row.contenu?.trim() && (row.similarite ?? 0) >= MATCH_THRESHOLD)
-    .map((row) => ({
-      document_id: row.document_id,
-      contenu: row.contenu,
-      titre: row.titre,
-      type_source: row.type_source === "url" ? "url" : "fichier",
-      url_source: row.url_source ?? null,
-      similarite: row.similarite,
-    }));
+  });
+  return rows.map((row) => ({
+    document_id: row.document_id,
+    contenu: row.contenu,
+    titre: row.titre,
+    type_source: row.type_source,
+    url_source: row.url_source,
+    similarite: row.similarite,
+  }));
 }
 
 function messageToolCalls(body: Record<string, unknown>): AgentToolCall[] {

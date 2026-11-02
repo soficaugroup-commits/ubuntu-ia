@@ -73,7 +73,7 @@ export function MemoryPanel({ facts, loading, error, onDeleted, onRetry }: Props
         {facts.map((fact) => (
           <li key={fact.id}>
             <Surface elevation="pressed" radius="surface" className="flex flex-col gap-2 p-3">
-              <p className="text-xs font-semibold text-content-muted">{labelKey(fact.cle)}</p>
+              <p className="text-xs font-semibold text-content-muted">{labelFact(fact)}</p>
               <p className="text-sm">{fact.valeur}</p>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs text-content-muted">{formatDateTime(fact.dateMaj)}</p>
@@ -103,6 +103,14 @@ export function MemoryPanel({ facts, loading, error, onDeleted, onRetry }: Props
       />
     </div>
   );
+}
+
+function labelFact(fact: MemoryFact): string {
+  const known = (copy.chat.memoryKeys as Record<string, string>)[fact.cle];
+  const scope = fact.portee ? copy.chat.memoryScopes[fact.portee] : "";
+  if (known) return scope ? `${scope} — ${known}` : known;
+  if (fact.sujet) return `${scope || copy.chat.memoryScopes.projet} · ${fact.sujet}`;
+  return scope || labelKey(fact.cle);
 }
 
 function labelKey(cle: string): string {

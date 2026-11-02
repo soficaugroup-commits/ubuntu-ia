@@ -83,9 +83,9 @@ export function astraSystemPrompt(options: {
 
   if (options.memory?.trim()) {
     parts.push(
-      "Mémoire durable de cet utilisateur (faits qu'il a exprimés lui-même — à respecter, jamais à inventer ni à déduire) :",
+      "Mémoire durable de cet utilisateur, apprise de ses conversations précédentes et classée par rubrique (préférences, profil, projets, organisations). Ce sont des faits qu'il a exprimés lui-même — à respecter, jamais à inventer ni à extrapoler :",
       options.memory.trim(),
-      "Applique ces préférences sans les mentionner, sauf si l'utilisateur en parle.",
+      "Applique les préférences et le profil sans les mentionner, sauf si l'utilisateur en parle. Un fait de projet ou d'organisation ne vaut que pour ce projet ou cette organisation : ne le transpose jamais à un autre dossier. Si la demande actuelle contredit la mémoire, la demande actuelle l'emporte.",
     );
   }
 

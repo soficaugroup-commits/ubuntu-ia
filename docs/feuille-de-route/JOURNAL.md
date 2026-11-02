@@ -1,6 +1,40 @@
 # Journal d'exécution — Feuille de route Ubuntu IA
 
+## Hors lot — Méthodologie et mémoire évolutive (2 novembre 2026)
+
+### Fait
+
+- **Catégorie Méthodologie** (`methodologie`) : ses documents (rapports types, audits, trames GIZ, BDO…)
+  servent de modèles de structure. Ils sont exclus de toute recherche de sources (chat, agent, vocal,
+  missions) via `lib/server/indexed-search.ts` et ne sont jamais cités.
+- Pour une rédaction structurée (rapport, audit, comparaison, note, livrable), `lib/server/methodology.ts`
+  choisit 1 à 2 références : d'abord celles que la demande désigne par leur titre (« pour la GIZ » → trame GIZ),
+  sinon les plus proches sémantiquement. Leur plan et quelques extraits sont injectés comme consigne de
+  structure, avec interdiction de citer la référence ou d'en recopier les faits et chiffres.
+  Étape visible dans le chat : « Structure de référence : … ».
+- **Mémoire évolutive** : après chaque échange, un modèle léger ajoute, modifie ou oublie des souvenirs
+  classés par portée (préférence, profil, projet, organisation, contexte) avec un sujet pour les projets.
+  Avant chaque réponse, préférences et profil sont rappelés ; un projet ne l'est que si la demande le
+  concerne (sujet cité ou proximité vectorielle) — pas de mélange entre dossiers. Données sensibles
+  filtrées, plafond de 150 souvenirs, synthèse automatique d'un projet trop bavard.
+- Tests : `tests/methodology-logic.test.ts`, `tests/memory-logic.test.ts` (17 tests verts).
+
+### Migration à appliquer
+
+- `backend/db/019_methodologie_memoire.sql` (catégorie Méthodologie, `match_document_chunks_filtered`,
+  colonnes `portee/sujet/importance/derniere_utilisation/embedding` sur `user_memory`, `match_user_memory`).
+  Sans elle, le code se replie sur les anciennes fonctions : exclusion par filtrage applicatif, mémoire sans
+  rubriques. Créer aussi la catégorie depuis l'admin si la migration n'est pas encore passée.
+
+
 ## Lot C — Branchements métier
+
+### Décision — 21 octobre 2026
+
+Le connecteur Ubuntu iTrack (sous-lot C3) est abandonné. On ne l'implémente pas.
+
+La suite du lot C est C4 (calendrier, fichiers Microsoft, validation par un responsable),
+après un essai réel du brouillon Outlook. Teams reste hors lot.
 
 ### Plan C2 (avant code)
 

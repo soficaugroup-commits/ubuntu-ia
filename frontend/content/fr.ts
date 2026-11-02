@@ -333,6 +333,9 @@ export const copy = {
     stepsFileError: "Le fichier n'a pas pu être généré.",
     stepsFileInvalid: "Le fichier {format} n'a pas passé le contrôle technique, même après une seconde tentative : il n'est pas livré.",
     stepsTemplate: "Modèle utilisé : {name}",
+    stepsMethodology: "Recherche d'une méthodologie de référence…",
+    stepsMethodologyDone: "Structure de référence : {titles}",
+    stepsMethodologyEmpty: "Aucune méthodologie de référence adaptée : structure standard.",
     stepsTemplateUnavailable: "Le modèle choisi n'est plus disponible : le livrable suit la charte SOFICAU.",
     stepsTemplateMissing: "Champs laissés à compléter dans le modèle : {fields}",
     stepsTemplateFallback: "Le modèle n'a pas pu être rempli proprement : le livrable {format} suit la charte SOFICAU.",
@@ -423,13 +426,20 @@ export const copy = {
     tipMemoryOpen: "Voir ce qu'Ubuntu IA retient de vous.",
     memoryTitle: "Ce qu'Ubuntu IA retient",
     memoryLead:
-      "Préférences et faits que vous avez exprimés. Ils s'appliquent aux prochaines conversations. Vous pouvez en effacer un à tout moment.",
+      "Ubuntu IA apprend de vos échanges : vos préférences, votre profil et vos projets. Un projet n'est rappelé que lorsque vous en parlez. Vous pouvez effacer un souvenir à tout moment.",
+    memoryScopes: {
+      preference: "Préférence",
+      profil: "Profil",
+      projet: "Projet",
+      organisation: "Organisation",
+      contexte: "Contexte",
+    },
     memoryLoading: "Chargement de la mémoire",
     memoryRetry: "Réessayer",
     tipMemoryRetry: "Recharger la mémoire enregistrée.",
     memoryEmptyTitle: "Aucun souvenir pour l'instant",
     memoryEmptyBody:
-      "Si vous indiquez une préférence (« je préfère des réponses courtes »), Ubuntu IA la retiendra pour les conversations suivantes.",
+      "Au fil des conversations, Ubuntu IA retiendra vos préférences (« je préfère des réponses courtes »), votre fonction et les projets sur lesquels vous travaillez.",
     memoryDelete: "Oublier",
     tipMemoryDelete: "Effacer ce souvenir.",
     memoryDeleteTitle: "Oublier ce souvenir ?",
@@ -472,6 +482,8 @@ export const copy = {
     categoryIndexLabel: "Catégorie d'indexation",
     categoryIndexHint:
       "Les nouveaux fichiers et pages seront classés dans cette catégorie.",
+    categoryMethodologyHint:
+      "Méthodologie : ces documents servent de modèles de structure (rapports, audits, comparaisons, trames GIZ, BDO…). Ubuntu IA s'en inspire pour rédiger, mais ne les cite jamais comme sources.",
     categoryFilterLabel: "Afficher",
     categoryFilterHint:
       "Ne voir que les fichiers et liens d'une catégorie, ou toute la base.",
@@ -920,6 +932,7 @@ export const copy = {
     procedures: "Procédures",
     projets: "Projets",
     institutionnel: "Institutionnel",
+    methodologie: "Méthodologie",
   },
 } as const;
 

@@ -21,19 +21,20 @@ import { embedTexts } from "@/lib/server/embed-texts";
 import { loadDocumentSkillPrompt } from "@/lib/server/document-skills";
 import { generateChatFiles } from "@/lib/server/generate-chat-file";
 import { generateChatImage } from "@/lib/server/generate-image";
-import { supabaseAdmin } from "@/lib/server/supabase-admin";
 import {
   listTemplatesForUser,
   loadTemplateForUser,
   matchTemplate,
   templatePromptBrief,
 } from "@/lib/server/templates";
+import { immediateFactsFromQuestion, loadMemoryForPrompt } from "@/lib/server/user-memory";
+import { matchIndexedChunks, organisationOf } from "@/lib/server/indexed-search";
 import {
-  formatMemoryForPrompt,
-  immediateFactsFromQuestion,
-  listUserMemory,
-} from "@/lib/server/user-memory";
-import type { MemoryFact } from "@/lib/types";
+  findMethodologyReferences,
+  methodologyPrompt,
+  wantsMethodology,
+  type MethodologyReference,
+} from "@/lib/server/methodology";
 import type {
   ChatAttachment,
   ChatTools,
@@ -171,7 +172,20 @@ export async function* streamAnswerQuestion(
   }
   yield step("write", steps.stepsWrite, "queued");
 
-  const [selectedRaw, prepared, storedMemory] = await Promise.all([
+  const methodologyWanted = wantsMethodology(question, {
+    mode: plan.mode,
+    deliverable: plan.needFile || plan.needCanvas || plan.formats.length > 0,
+  });
+  if (methodologyWanted) {
+    yield step("methodology", steps.stepsMethodology, "running");
+  }
+  const recentText = prior
+    .slice(-4)
+    .map((turn) => turn.content)
+    .join("\n")
+    .slice(0, 2_000);
+
+  const [selectedRaw, prepared, memoryText, methodology] = await Promise.all([
     plan.needRag
       ? retrieveIndexed(query, memoryContext?.userId).catch((error) => {
           console.error("[chat] rag", error);
@@ -180,13 +194,33 @@ export async function* streamAnswerQuestion(
       : Promise.resolve([] as RetrievedChunk[]),
     prepareChatAttachments(attachments, question),
     memoryContext
-      ? listUserMemory(memoryContext.userId).catch((error) => {
+      ? loadMemoryForPrompt(
+          memoryContext.userId,
+          question,
+          recentText,
+          immediateFactsFromQuestion(question),
+        ).catch((error) => {
           console.error("[chat] memory", error);
-          return [] as MemoryFact[];
+          return "";
         })
-      : Promise.resolve([] as MemoryFact[]),
+      : Promise.resolve(""),
+    methodologyWanted
+      ? findMethodologyReferences(query, memoryContext?.userId)
+      : Promise.resolve([] as MethodologyReference[]),
   ]);
   throwIfAborted(signal);
+
+  if (methodologyWanted) {
+    yield methodology.length
+      ? step(
+          "methodology",
+          interpolate(steps.stepsMethodologyDone, {
+            titles: methodology.map((ref) => `« ${ref.titre} »`).join(", "),
+          }),
+          "done",
+        )
+      : step("methodology", steps.stepsMethodologyEmpty, "empty");
+  }
 
   if (attachments.length) {
     yield step("attachments", steps.stepsAttachmentsDone, "done");
@@ -287,8 +321,6 @@ export async function* streamAnswerQuestion(
     yield step("web", steps.stepsWeb, "running");
   }
 
-  const spokenFacts = immediateFactsFromQuestion(question);
-  const memory = mergeFacts(storedMemory, spokenFacts);
 
   const imagePromise = imageWanted
     ? generateChatImage(
@@ -319,7 +351,8 @@ export async function* streamAnswerQuestion(
           canvas: canvasWanted || fileWanted,
           file: fileWanted,
           formats,
-          memory: formatMemoryForPrompt(memory),
+          memory: memoryText,
+          methodologyBrief: methodologyPrompt(methodology),
           agentMode: plan.mode,
           useWeb: plan.needWeb,
           templateBrief: template ? templatePromptBrief(template.template) : undefined,
@@ -564,37 +597,13 @@ async function retrieveIndexed(query: string, userId?: string): Promise<Retrieve
 }
 
 async function matchChunks(vector: number[], userId?: string): Promise<RetrievedChunk[]> {
-  let organisationId: string | null = null;
-  if (userId) {
-    const profile = await supabaseAdmin()
-      .from("users")
-      .select("organisation_id")
-      .eq("id", userId)
-      .maybeSingle();
-    organisationId = (profile.data?.organisation_id as string | null) ?? null;
-  }
-  const scoped = organisationId
-    ? await supabaseAdmin().rpc("match_document_chunks_scoped", {
-        query_embedding: vector,
-        match_count: MATCH_COUNT,
-        match_threshold: MATCH_THRESHOLD,
-        organisation_id: organisationId,
-      })
-    : { data: null, error: { message: "no-org" } };
-  const { data, error } = scoped.error
-    ? await supabaseAdmin().rpc("match_document_chunks", {
-        query_embedding: vector,
-        match_count: MATCH_COUNT,
-        match_threshold: MATCH_THRESHOLD,
-      })
-    : scoped;
-  if (error) {
-    throw new Error(
-      `La recherche dans les documents indexés a échoué${error.message ? ` : ${error.message}` : "."}`,
-    );
-  }
-  const rows = (data ?? []) as RetrievedChunk[];
-  return rows.filter((row) => row.contenu?.trim());
+  // Les documents Méthodologie sont exclus : ils structurent la rédaction, ils ne sont jamais des sources.
+  const organisationId = await organisationOf(userId);
+  return matchIndexedChunks(vector, {
+    count: MATCH_COUNT,
+    threshold: MATCH_THRESHOLD,
+    organisationId,
+  });
 }
 
 async function completeAnswer(
@@ -611,6 +620,7 @@ async function completeAnswer(
     agentMode?: "answer" | "task" | "hybrid";
     useWeb?: boolean;
     templateBrief?: string;
+    methodologyBrief?: string;
   },
   onToken: (text: string) => void,
   onActivity: (kind: "web_search" | "web_fetch") => void,
@@ -822,6 +832,7 @@ function answerMessages(
     agentMode?: "answer" | "task" | "hybrid";
     useWeb?: boolean;
     templateBrief?: string;
+    methodologyBrief?: string;
   },
 ): ChatTurn[] {
   const internalCount = chunks.length;
@@ -843,7 +854,9 @@ function answerMessages(
         memory: extras.memory,
         agentMode: extras.agentMode,
         documentSkills,
-      }) + (extras.templateBrief ? `\n\n${extras.templateBrief}` : ""),
+      }) +
+        (extras.templateBrief ? `\n\n${extras.templateBrief}` : "") +
+        (extras.methodologyBrief ? `\n\n${extras.methodologyBrief}` : ""),
     },
   ];
 
@@ -1063,13 +1076,6 @@ function toCitations(chunks: RetrievedChunk[]): SourceCitation[] {
     if (sources.length >= 4) break;
   }
   return sources;
-}
-
-function mergeFacts(stored: MemoryFact[], spoken: MemoryFact[]): MemoryFact[] {
-  const byKey = new Map<string, MemoryFact>();
-  for (const fact of stored) byKey.set(fact.cle, fact);
-  for (const fact of spoken) byKey.set(fact.cle, fact);
-  return [...byKey.values()];
 }
 
 function excerpt(text: string): string {

@@ -71,17 +71,31 @@ export async function sendPasswordResetEmail(
   if (error) {
     console.error("[password-reset] resend", error);
     const detail = typeof error.message === "string" ? error.message.trim() : "";
-    if (/domain|verified|not allowed|from/i.test(detail)) {
+    if (/not verified|verify your domain/i.test(detail)) {
+      const domain = from.match(/@([^>\s]+)/)?.[1]?.toLowerCase() ?? "de l'expéditeur";
+      return {
+        ok: false,
+        message: `Le domaine ${domain} n'est pas vérifié dans Resend. Ajoutez-le dans Resend (Domains), publiez les enregistrements DNS, puis gardez une adresse de ce domaine dans RESEND_FROM_EMAIL.`,
+      };
+    }
+    if (/testing emails/i.test(detail)) {
       return {
         ok: false,
         message:
-          "L'adresse d'expéditeur n'est pas autorisée. Vérifiez le domaine dans Resend, puis RESEND_FROM_EMAIL sur Netlify.",
+          "Sans domaine vérifié, Resend n'envoie les essais qu'à l'adresse du compte. Vérifiez un domaine, puis mettez à jour RESEND_FROM_EMAIL.",
       };
     }
-    if (/api.?key|unauthorized|invalid/i.test(detail)) {
+    if (/domain|not allowed|from/i.test(detail)) {
       return {
         ok: false,
-        message: "La clé Resend est refusée. Vérifiez RESEND_API_KEY sur Netlify.",
+        message:
+          "L'adresse d'expéditeur n'est pas autorisée. Vérifiez le domaine dans Resend, puis RESEND_FROM_EMAIL.",
+      };
+    }
+    if (/api.?key|unauthorized/i.test(detail)) {
+      return {
+        ok: false,
+        message: "La clé Resend est refusée. Vérifiez RESEND_API_KEY.",
       };
     }
     return { ok: false, message: "L'e-mail de réinitialisation n'a pas pu être envoyé." };

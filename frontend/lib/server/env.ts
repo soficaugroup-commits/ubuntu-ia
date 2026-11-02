@@ -384,13 +384,13 @@ export function assertServerSecrets(): string | null {
   const key = resendApiKey();
   const from = resendFromEmail();
   if (!key && !from) {
-    return "L'envoi d'e-mail n'est pas configuré (RESEND_API_KEY et RESEND_FROM_EMAIL manquants sur Netlify).";
+    return "L'envoi d'e-mail n'est pas configuré (RESEND_API_KEY et RESEND_FROM_EMAIL manquants).";
   }
   if (!key) {
-    return "L'envoi d'e-mail n'est pas configuré (RESEND_API_KEY manquante sur Netlify).";
+    return "L'envoi d'e-mail n'est pas configuré (RESEND_API_KEY manquante).";
   }
   if (!from) {
-    return "L'envoi d'e-mail n'est pas configuré (RESEND_FROM_EMAIL manquante sur Netlify).";
+    return "L'envoi d'e-mail n'est pas configuré (RESEND_FROM_EMAIL manquante).";
   }
   return null;
 }

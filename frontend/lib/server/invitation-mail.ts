@@ -72,22 +72,30 @@ export async function sendInvitationEmail(
   if (error) {
     console.error("[invite] resend", error);
     const detail = typeof error.message === "string" ? error.message.trim() : "";
-    if (/domain|verified|not allowed|from/i.test(detail)) {
-      return {
-        ok: false,
-        message:
-          "L'adresse d'expéditeur n'est pas autorisée. Vérifiez le domaine dans Resend (Domains), puis RESEND_FROM_EMAIL sur Netlify.",
-      };
-    }
-    if (/api.?key|unauthorized|invalid/i.test(detail)) {
-      return {
-        ok: false,
-        message: "La clé Resend est refusée. Vérifiez RESEND_API_KEY sur Netlify.",
-      };
-    }
-    return { ok: false, message: "L'e-mail d'invitation n'a pas pu être envoyé." };
+    return { ok: false, message: resendFailureMessage(detail, from) };
   }
   return { ok: true };
+}
+
+function senderDomain(from: string): string {
+  return from.match(/@([^>\s]+)/)?.[1]?.toLowerCase() ?? "de l'expéditeur";
+}
+
+function resendFailureMessage(detail: string, from: string): string {
+  const domain = senderDomain(from);
+  if (/not verified|verify your domain/i.test(detail)) {
+    return `Le domaine ${domain} n'est pas vérifié dans Resend. Ajoutez-le dans Resend (Domains), publiez les enregistrements DNS, puis gardez une adresse de ce domaine dans RESEND_FROM_EMAIL.`;
+  }
+  if (/testing emails/i.test(detail)) {
+    return "Sans domaine vérifié, Resend n'envoie les essais qu'à l'adresse du compte. Vérifiez un domaine, puis mettez à jour RESEND_FROM_EMAIL.";
+  }
+  if (/api.?key|unauthorized/i.test(detail)) {
+    return "La clé Resend est refusée. Vérifiez RESEND_API_KEY.";
+  }
+  if (/domain|not allowed|from/i.test(detail)) {
+    return `L'adresse d'expéditeur (${domain}) n'est pas autorisée. Vérifiez le domaine dans Resend, puis RESEND_FROM_EMAIL.`;
+  }
+  return "L'e-mail d'invitation n'a pas pu être envoyé.";
 }
 
 function normalizeFrom(value: string): string {
